@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""Import a reference parity seed (SQLite + Active Storage tree) into SoliDB.
+
+    bin/import-seed SEED_DIR [--database NAME]
+
+SEED_DIR is a seed built by the Rust port's `parity/bin/seed build default`: db/production.sqlite3,
+storage/ and labels.json. Ids become _keys (so labels.json still names every row), times become
+epoch milliseconds, rich text bodies move onto their messages, and Active Storage files become
+blobs in the "attachments" blob collection. Variants and the derived message fields (plain text,
+search text, cached HTML) are computed afterwards by the app itself: db/seeds/after_import.sl.
+
+The seed's bcrypt digests can't be verified by Soli (Argon2 only), so every user with a password
+gets an Argon2 digest of labels.json's passwords.all.
+"""
+
+import base64
+import datetime
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import urllib.request
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def env(name, default):
+    path = os.path.join(ROOT, ".env")
+    if os.path.exists(path):
+        for line in open(path):
+            if line.startswith(name + "="):
+                return line.split("=", 1)[1].strip()
+    return os.environ.get(name, default)
+
+
+HOST = env("SOLIDB_HOST", "http://localhost:6745")
+USER = env("SOLIDB_USERNAME", "admin")
+PASSWORD = env("SOLIDB_PASSWORD", "admin")
+AUTH = "Basic " + base64.b64encode(f"{USER}:{PASSWORD}".encode()).decode()
+
+
+def api(method, path, body=None, content_type="application/json"):
+    data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
+    req = urllib.request.Request(HOST + path, data=data, method=method)
+    req.add_header("Authorization", AUTH)
+    if data is not None:
+        req.add_header("Content-Type", content_type)
+    with urllib.request.urlopen(req) as r:
+        raw = r.read()
+        return json.loads(raw) if raw else None
+
+
+def query(db, sdbql, binds=None):
+    return api("POST", f"/_api/database/{db}/cursor", {"query": sdbql, "bindVars": binds or {}, "cache": False})
+
+
+def ms(value):
+    if value is None:
+        return None
+    value = value.replace("T", " ").rstrip("Z")
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            t = datetime.datetime.strptime(value, fmt).replace(tzinfo=datetime.timezone.utc)
+            return int(t.timestamp() * 1000)
+        except ValueError:
+            pass
+    raise ValueError(value)
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    seed = sys.argv[1]
+    database = env("SOLIDB_DATABASE", "once_campfire_soli")
+    if "--database" in sys.argv:
+        database = sys.argv[sys.argv.index("--database") + 1]
+
+    labels = json.load(open(os.path.join(seed, "labels.json")))
+    sql = sqlite3.connect(os.path.join(seed, "db", "production.sqlite3"))
+    sql.row_factory = sqlite3.Row
+    rows = lambda q: [dict(r) for r in sql.execute(q)]
+
+    digest = subprocess.run(["soli", "-e", 'print(password_hash("%s"))' % labels["passwords.all"]],
+                            capture_output=True, text=True, check=True).stdout.strip()
+
+    collections = ["accounts", "users", "rooms", "memberships", "messages", "boosts", "sessions",
+                   "searches", "bans", "push_subscriptions", "webhooks"]
+    for c in collections:
+        query(database, f"FOR d IN {c} REMOVE d IN {c}")
+    for blob in query(database, "FOR b IN attachments RETURN b._key").get("result", []):
+        api("DELETE", f"/_api/database/{database}/document/attachments/{blob}")
+
+    blobs = {b["id"]: b for b in rows("SELECT * FROM active_storage_blobs")}
+    attachments = {}
+    for a in rows("SELECT * FROM active_storage_attachments"):
+        attachments[(a["record_type"], a["record_id"], a["name"])] = blobs[a["blob_id"]]
+
+    def store_blob(blob):
+        key = blob["key"]
+        path = os.path.join(seed, "storage", key[0:2], key[2:4], key)
+        content = open(path, "rb").read()
+        boundary = "----soli-import-" + key
+        body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{blob['filename']}\"\r\n"
+            f"Content-Type: {blob['content_type'] or 'application/octet-stream'}\r\n\r\n"
+        ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
+        res = api("POST", f"/_api/blob/{database}/attachments", body, f"multipart/form-data; boundary={boundary}")
+        return res.get("_key") or res.get("key") or res.get("id")
+
+    def image_record(blob):
+        if blob is None:
+            return None
+        return {"blob_id": store_blob(blob), "filename": blob["filename"], "content_type": blob["content_type"]}
+
+    def insert(collection, docs):
+        for i in range(0, len(docs), 200):
+            query(database, f"FOR d IN @docs INSERT d INTO {collection}", {"docs": docs[i:i + 200]})
+
+    account = rows("SELECT * FROM accounts")[0]
+    insert("accounts", [{
+        "_key": "campfire", "name": account["name"], "join_code": account["join_code"],
+        "custom_styles": account["custom_styles"], "settings": json.loads(account["settings"] or "{}") or
+        {"restrict_room_creation_to_administrators": False},
+        "logo": image_record(attachments.get(("Account", account["id"], "logo"))),
+        "created_at": ms(account["created_at"]), "updated_at": ms(account["updated_at"]),
+    }])
+    settings = query(database, 'FOR a IN accounts RETURN a.settings')["result"][0]
+    if "restrict_room_creation_to_administrators" not in settings:
+        settings["restrict_room_creation_to_administrators"] = False
+        query(database, 'FOR a IN accounts UPDATE a WITH {settings: @s} IN accounts', {"s": settings})
+
+    roles = {0: "member", 1: "administrator", 2: "bot"}
+    statuses = {0: "active", 1: "deactivated", 2: "banned"}
+    insert("users", [{
+        "_key": str(u["id"]), "name": u["name"], "email_address": u["email_address"],
+        "password_digest": digest if u["password_digest"] else None,
+        "role": roles[u["role"]], "status": statuses[u["status"]], "bio": u["bio"], "bot_token": u["bot_token"],
+        "avatar": image_record(attachments.get(("User", u["id"], "avatar"))),
+        "created_at": ms(u["created_at"]), "updated_at": ms(u["updated_at"]),
+    } for u in rows("SELECT * FROM users")])
+
+    insert("rooms", [{
+        "_key": str(r["id"]), "name": r["name"], "type": r["type"], "creator_id": str(r["creator_id"]),
+        "created_at": ms(r["created_at"]), "updated_at": ms(r["updated_at"]),
+    } for r in rows("SELECT * FROM rooms")])
+
+    insert("memberships", [{
+        "_key": str(m["id"]), "room_id": str(m["room_id"]), "user_id": str(m["user_id"]),
+        "involvement": m["involvement"], "unread_at": ms(m["unread_at"]), "connected_at": ms(m["connected_at"]),
+        "connections": m["connections"], "created_at": ms(m["created_at"]), "updated_at": ms(m["updated_at"]),
+    } for m in rows("SELECT * FROM memberships")])
+
+    bodies = {r["record_id"]: r["body"] for r in rows("SELECT * FROM action_text_rich_texts WHERE record_type = 'Message' AND name = 'body'")}
+    messages = []
+    for m in rows("SELECT * FROM messages"):
+        blob = attachments.get(("Message", m["id"], "attachment"))
+        attachment = None
+        if blob is not None:
+            metadata = json.loads(blob["metadata"] or "{}")
+            attachment = {
+                "blob_id": store_blob(blob), "filename": blob["filename"], "content_type": blob["content_type"],
+                "byte_size": blob["byte_size"], "width": metadata.get("width"), "height": metadata.get("height"),
+                "variant_blob_id": None, "preview_blob_id": None,
+            }
+        messages.append({
+            "_key": str(m["id"]), "room_id": str(m["room_id"]), "creator_id": str(m["creator_id"]),
+            "client_message_id": m["client_message_id"], "body": bodies.get(m["id"]), "attachment": attachment,
+            "plain_text": None, "search_text": None, "html": None, "html_key": None,
+            "created_at": ms(m["created_at"]), "updated_at": ms(m["updated_at"]),
+        })
+    insert("messages", messages)
+
+    insert("boosts", [{
+        "_key": str(b["id"]), "message_id": str(b["message_id"]), "booster_id": str(b["booster_id"]),
+        "content": b["content"], "created_at": ms(b["created_at"]), "updated_at": ms(b["updated_at"]),
+    } for b in rows("SELECT * FROM boosts")])
+
+    insert("searches", [{
+        "_key": str(s["id"]), "user_id": str(s["user_id"]), "query": s["query"],
+        "created_at": ms(s["created_at"]), "updated_at": ms(s["updated_at"]),
+    } for s in rows("SELECT * FROM searches")])
+
+    insert("bans", [{
+        "_key": str(b["id"]), "user_id": str(b["user_id"]), "ip_address": b["ip_address"],
+        "created_at": ms(b["created_at"]), "updated_at": ms(b["updated_at"]),
+    } for b in rows("SELECT * FROM bans")])
+
+    insert("push_subscriptions", [{
+        "_key": str(p["id"]), "user_id": str(p["user_id"]), "endpoint": p["endpoint"], "p256dh_key": p["p256dh_key"],
+        "auth_key": p["auth_key"], "user_agent": p["user_agent"],
+        "created_at": ms(p["created_at"]), "updated_at": ms(p["updated_at"]),
+    } for p in rows("SELECT * FROM push_subscriptions")])
+
+    insert("webhooks", [{
+        "_key": str(w["id"]), "user_id": str(w["user_id"]), "url": w["url"],
+        "created_at": ms(w["created_at"]), "updated_at": ms(w["updated_at"]),
+    } for w in rows("SELECT * FROM webhooks")])
+
+    for c in collections:
+        n = query(database, f"RETURN COLLECTION_COUNT(\"{c}\")")["result"][0]
+        print(f"{c}: {n}")
+
+
+if __name__ == "__main__":
+    main()

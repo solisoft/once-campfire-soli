@@ -1,0 +1,28 @@
+<div id="message_<%= m["client_message_id"] %>" class="message <%= m["emoji"] ? "message--emoji" : "" %>" data-controller="reply" data-user-id="<%= m["creator_id"] %>" data-message-id="<%= m["_key"] %>" data-message-timestamp="<%= m["created_at"] %>" data-message-updated-at="<%= m["updated_at"] %>" data-sort-value="<%= m["created_at"] %>" data-messages-target="message" data-search-results-target="message" data-refresh-room-target="message" data-reply-composer-outlet="#composer">
+    <h2 class="message__day-separator"><%- local_datetime_tag(m["created_at"], "date") %></h2>
+
+    <figure class="avatar message__avatar">
+      <%- avatar_tag(m["creator"]) %>
+    </figure>
+
+    <turbo-frame id="edit_message_<%= m["client_message_id"] %>">
+      <div class="message__body">
+        <div class="message__body-content">
+          <div class="message__meta">
+            <h3 class="message__heading">
+              <span class="message__author" title="<%= m["creator"]["title"] %>">
+                <strong data-reply-target="author"><%= m["creator"]["name"] %></strong>
+              </span>
+              <a target="_top" class="message__permalink" href="<%= m["permalink_path"] %>"><%- local_datetime_tag(m["created_at"], "time", {"class": "message__timestamp"}) %></a>
+              <span class="message__room">
+                <a target="_top" data-reply-target="link" href="<%= m["permalink_path"] %>"><%= m["room_name"] %></a>
+              </span>
+            </h3>
+            <%- partial("messages/actions", {"m": m}) %>
+          </div>
+          <%- partial("messages/presentation", {"m": m}) %>
+          <%- partial("messages/boosts/boosts", {"m": m}) %>
+        </div>
+      </div>
+    </turbo-frame>
+</div>

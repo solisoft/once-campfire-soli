@@ -1,10 +1,123 @@
-# Routes configuration
-# Define your application routes here
+# The reference's config/routes.rb, route for route. Soli's router has no "@:param"
+# segments and no format suffixes, so /rooms/:room_id/@:message_id is the last
+# /rooms/:room_id/* GET and .json variants are spelled out.
 
-# Home page
-get("/", "home#index")
+get("/", "welcome#show")
 
-# Health check endpoint
-get("/health", "home#health")
+get("/first_run", "first_runs#show")
+post("/first_run", "first_runs#create")
 
-print("Routes loaded!")
+get("/session/new", "sessions#new")
+post("/session", "sessions#create")
+delete("/session", "sessions#destroy")
+get("/session/transfers/:id", "sessions/transfers#show")
+put("/session/transfers/:id", "sessions/transfers#update")
+patch("/session/transfers/:id", "sessions/transfers#update")
+
+get("/account/edit", "accounts#edit")
+patch("/account", "accounts#update")
+put("/account", "accounts#update")
+get("/account/users", "accounts/users#index")
+patch("/account/users/:id", "accounts/users#update")
+put("/account/users/:id", "accounts/users#update")
+delete("/account/users/:id", "accounts/users#destroy")
+get("/account/bots", "accounts/bots#index")
+get("/account/bots/new", "accounts/bots#new")
+post("/account/bots", "accounts/bots#create")
+get("/account/bots/:id/edit", "accounts/bots#edit")
+patch("/account/bots/:id", "accounts/bots#update")
+put("/account/bots/:id", "accounts/bots#update")
+delete("/account/bots/:id", "accounts/bots#destroy")
+patch("/account/bots/:bot_id/key", "accounts/bots/keys#update")
+put("/account/bots/:bot_id/key", "accounts/bots/keys#update")
+post("/account/join_code", "accounts/join_codes#create")
+get("/account/logo", "accounts/logos#show")
+delete("/account/logo", "accounts/logos#destroy")
+get("/account/custom_styles/edit", "accounts/custom_styles#edit")
+patch("/account/custom_styles", "accounts/custom_styles#update")
+put("/account/custom_styles", "accounts/custom_styles#update")
+
+get("/join/:join_code", "users#new")
+post("/join/:join_code", "users#create")
+
+get("/qr_code/:id", "qr_code#show")
+
+get("/attachments/:token/:filename", "attachments#show")
+
+get("/users/:user_id/sidebar", "users/sidebars#show")
+get("/users/:user_id/profile", "users/profiles#show")
+patch("/users/:user_id/profile", "users/profiles#update")
+put("/users/:user_id/profile", "users/profiles#update")
+get("/users/:user_id/push_subscriptions", "users/push_subscriptions#index")
+post("/users/:user_id/push_subscriptions", "users/push_subscriptions#create")
+delete("/users/:user_id/push_subscriptions/:id", "users/push_subscriptions#destroy")
+post("/users/:user_id/push_subscriptions/:push_subscription_id/test_notifications", "users/push_subscriptions/test_notifications#create")
+get("/users/:user_id/avatar", "users/avatars#show")
+delete("/users/:user_id/avatar", "users/avatars#destroy")
+post("/users/:user_id/ban", "users/bans#create")
+delete("/users/:user_id/ban", "users/bans#destroy")
+get("/users/:id", "users#show")
+
+get("/autocompletable/users", "autocompletable/users#index")
+
+get("/rooms/opens/new", "rooms/opens#new")
+post("/rooms/opens", "rooms/opens#create")
+get("/rooms/opens/:id", "rooms/opens#show")
+get("/rooms/opens/:id/edit", "rooms/opens#edit")
+patch("/rooms/opens/:id", "rooms/opens#update")
+put("/rooms/opens/:id", "rooms/opens#update")
+get("/rooms/closeds/new", "rooms/closeds#new")
+post("/rooms/closeds", "rooms/closeds#create")
+get("/rooms/closeds/:id", "rooms/closeds#show")
+get("/rooms/closeds/:id/edit", "rooms/closeds#edit")
+patch("/rooms/closeds/:id", "rooms/closeds#update")
+put("/rooms/closeds/:id", "rooms/closeds#update")
+get("/rooms/directs/new", "rooms/directs#new")
+post("/rooms/directs", "rooms/directs#create")
+get("/rooms/directs/:id/edit", "rooms/directs#edit")
+delete("/rooms/directs/:id", "rooms/directs#destroy")
+
+get("/rooms", "rooms#index")
+get("/rooms/:id", "rooms#show")
+delete("/rooms/:id", "rooms#destroy")
+
+get("/rooms/:room_id/messages", "messages#index")
+post("/rooms/:room_id/messages", "messages#create")
+get("/rooms/:room_id/messages/:id/edit", "messages#edit")
+get("/rooms/:room_id/messages/:id", "messages#show")
+patch("/rooms/:room_id/messages/:id", "messages#update")
+put("/rooms/:room_id/messages/:id", "messages#update")
+delete("/rooms/:room_id/messages/:id", "messages#destroy")
+
+get("/rooms/:room_id/refresh", "rooms/refreshes#show")
+get("/rooms/:room_id/involvement", "rooms/involvements#show")
+patch("/rooms/:room_id/involvement", "rooms/involvements#update")
+put("/rooms/:room_id/involvement", "rooms/involvements#update")
+
+get("/rooms/:room_id/:bot_key/messages", "messages/by_bots#index")
+post("/rooms/:room_id/:bot_key/messages", "messages/by_bots#create")
+patch("/rooms/:room_id/:bot_key/messages/:id", "messages/by_bots#update")
+put("/rooms/:room_id/:bot_key/messages/:id", "messages/by_bots#update")
+delete("/rooms/:room_id/:bot_key/messages/:id", "messages/by_bots#destroy")
+post("/rooms/:room_id/:bot_key/messages/:message_id/boosts", "messages/boosts/by_bots#create")
+delete("/rooms/:room_id/:bot_key/messages/:message_id/boosts/:id", "messages/boosts/by_bots#destroy")
+
+get("/rooms/:room_id/:at_message", "rooms#show")
+
+get("/messages/:message_id/boosts", "messages/boosts#index")
+get("/messages/:message_id/boosts/new", "messages/boosts#new")
+post("/messages/:message_id/boosts", "messages/boosts#create")
+delete("/messages/:message_id/boosts/:id", "messages/boosts#destroy")
+
+get("/searches", "searches#index")
+post("/searches", "searches#create")
+delete("/searches/clear", "searches#clear")
+
+post("/unfurl_link", "unfurl_links#create")
+
+get("/webmanifest", "pwa#manifest")
+get("/webmanifest.json", "pwa#manifest")
+get("/service-worker", "pwa#service_worker")
+get("/service-worker.js", "pwa#service_worker")
+
+router_websocket("/cable", "cable#handle")

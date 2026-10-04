@@ -1,0 +1,3 @@
+<div id="presentation_message_<%= m["client_message_id"] %>" dir="auto" data-reply-target="body" data-messages-target="body">
+  <%- m["presentation_html"] %>
+</div>

@@ -1,0 +1,9 @@
+name = "campfire.solisoft.test"
+domain = "campfire.solisoft.test"
+start_script = "soli serve . --port $PORT --workers $WORKERS"
+workers = 2
+stop_script = ""
+health_check = "/up"
+graceful_timeout = 30
+port_range_start = 20000
+port_range_end = 30000

@@ -1,0 +1,9 @@
+<% unless owner.nil? %>
+  <div class="txt-align-center margin-block-double full-width">
+    <a class="btn center" title="Email <%= owner["name"] %>" href="mailto:&quot;<%= owner["name"] %>&quot; &lt;<%= owner["email_address"] %>&gt;">
+      <%- image_tag("lifebuoy.svg", {"aria": {"hidden": "true"}}) %>
+      <span><%= owner["email_address"] %></span>
+</a>
+    <div class="txt-align-center center margin-block txt-subtle">Campfire&trade; version <span class="version-badge"><%= getenv("APP_VERSION") ?? getenv("GIT_REVISION") ?? "0" %></span></div>
+  </div>
+<% end %>

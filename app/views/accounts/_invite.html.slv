@@ -1,0 +1,27 @@
+<div class="flex flex-column align-center gap">
+  <label class="flex flex-column gap full-width" style="--row-gap: 0.5em">
+    <strong id="invite_label" class="invite-label">Share to invite more people</strong>
+    <span class="flex align-center gap input input--actor fill-white">
+      <%- image_tag("person-add.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "colorize--black"}) %>
+      <input type="text" class="input" id="invite_url" value="<%= @join_url %>" aria-labelledby="invite_label" readonly>
+    </span>
+  </label>
+
+  <div class="flex align-center gap">
+    <a class="btn" data-lightbox-target="image" data-action="lightbox#open" data-lightbox-url-value="<%= @join_qr_path %>" href="<%= @join_qr_path %>">
+      <span class="for-screen-reader">Show join link QR code</span>
+      <%- image_tag("qr-code.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "colorize--black"}) %>
+</a>
+    <button class="btn" data-controller="copy-to-clipboard" data-action="copy-to-clipboard#copy" data-copy-to-clipboard-success-class="btn--success" data-copy-to-clipboard-content-value="<%= @join_url %>">
+      <span class="for-screen-reader">Copy join link</span>
+      <%- image_tag("copy-paste.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "colorize--black"}) %>
+</button>
+    <button class="btn" hidden="hidden" data-controller="web-share" data-action="web-share#share" data-web-share-url-value="<%= @join_url %>" data-web-share-text-value="Hit this link to join me in Campfire and start chatting." data-web-share-title-value="Link to join Campfire">
+      <span class="for-screen-reader">Share join link</span>
+      <%- image_tag("share.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "colorize--black"}) %>
+</button>
+<% if !@layout["user"].nil? && @layout["user"]["administrator"] %>
+      <%- button_to("/account/join_code", {"class": "btn btn--regenerate"}, image_tag("refresh.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "colorize--black"}) + "<span class=\"for-screen-reader\">Regenerate join link</span>") %>
+<% end %>
+  </div>
+</div>

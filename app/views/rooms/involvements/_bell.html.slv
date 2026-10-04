@@ -1,0 +1,34 @@
+<span>
+  <span class="button_to_change_notifying"
+      data-controller="notifications" data-notifications-subscriptions-url-value="/users/me/push_subscriptions" data-notifications-attention-class="btn--pulsing">
+    <turbo-frame id="involvement_room_<%= room["_key"] %>" data-controller="turbo-frame" data-action="notifications:ready@window->turbo-frame#load" data-turbo-frame-url-param="/rooms/<%= room["_key"] %>/involvement">
+      <button class="btn" data-action="click->notifications#attemptToSubscribe" data-notifications-target="bell">
+        <%- image_tag("notification-bell-loading.svg", {"size": 20, "aria": {"hidden": "true"}}) %>
+        <%- image_tag("notification-bell-alert.svg", {"size": 20, "aria": {"hidden": "true"}, "hidden": true}) %>
+        <span class="for-screen-reader">Notification settings for this <%= room["type"] == "Rooms::Direct" ? "Ping" : "room" %></span>
+      </button>
+</turbo-frame>
+    <dialog data-notifications-target="notAllowedNotice" class="dialog pad center center-block border-radius border shadow" style="--inline-space: var(--block-space)">
+      <div class="flex flex-column txt-align-center">
+        <span class="btn btn--faux center txt-x-large">
+          <%- image_tag("notification-bell-alert.svg", {"size": 48, "aria": {"hidden": "true"}}) %>
+          <span class="for-screen-reader">Notifications alert</span>
+        </span>
+
+        <section>
+          <h1 class="txt-large margin-none">Notifications aren’t allowed</h1>
+          <div class="txt-align-start margin-block-start">
+            <%- @notification_help_html %>
+          </div>
+        </section>
+
+        <form method="dialog" class="flex align-center gap center">
+          <button class="btn dialog__close" autofocus="true">
+            <span class="for-screen-reader">Close</span>
+            <%- image_tag("remove.svg", {"size": 20, "aria": {"hidden": "true"}}) %>
+          </button>
+        </form>
+      </div>
+    </dialog>
+  </span>
+</span>

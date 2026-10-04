@@ -1,0 +1,3 @@
+<turbo-frame id="user_sidebar" target="_top" data-turbo-permanent="true" data-controller="rooms-list read-rooms turbo-frame" data-rooms-list-unread-class="unread" data-action="presence:present@window->rooms-list#read read-rooms:read->rooms-list#read turbo:frame-load->rooms-list#loaded refresh-room:visible@window->turbo-frame#reload">
+<%- partial("users/sidebars/contents", {}) %>
+</turbo-frame>

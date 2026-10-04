@@ -1,0 +1,3 @@
+<a id="list_room_<%= room["_key"] %>" style="--column-gap: 0.5em" class="align-center gap room btn txt-nowrap<%= unread ? " unread" : "" %>" data-sorted-list-name="<%= room["name"] %>" data-rooms-list-target="room" data-room-id="<%= room["_key"] %>" data-badge-dot-target="unread" data-sorted-list-target="item" href="/rooms/<%= room["_key"] %>">
+  <span class="overflow-ellipsis"><%= room["name"] %></span>
+</a>

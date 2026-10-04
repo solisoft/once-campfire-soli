@@ -1,0 +1,16 @@
+<% content_for "nav" do %>
+<% unless @layout["account"]["logo"].nil? %>  <%- partial("accounts/logo", {"style": nil}) %><% end %>
+
+  <span class="btn btn--reversed btn--faux room--current">
+    <h1 class="room__contents txt-medium overflow-ellipsis">
+<% if room["type"] == "Rooms::Direct" %>        <span class="for-screen-reader">Ping with</span>
+<% end %>
+      <%= display_name %>
+    </h1>
+</span>
+  <a class="btn" style="view-transition-name: edit-room-<%= room["_key"] %>" data-room-id="<%= room["_key"] %>" href="<%= @edit_room_path %>">
+    <%- image_tag("menu-dots-horizontal.svg", {"size": 20, "aria": {"hidden": "true"}}) %>
+    <span class="for-screen-reader">Settings for this <%= room["type"] == "Rooms::Direct" ? "Ping" : "room" %></span>
+</a>
+  <%- partial("rooms/involvements/bell", {"room": room}) %>
+<% end %>

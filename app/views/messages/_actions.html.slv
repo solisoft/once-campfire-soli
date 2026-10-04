@@ -1,0 +1,43 @@
+<div class="message__actions" data-controller="soft-keyboard">
+  <details class="position-relative" data-controller="popup" data-action="keydown.esc->popup#close toggle->popup#toggle click@document->popup#closeOnClickOutside" data-popup-orientation-top-class="popup-orientation-top">
+    <summary class="btn message__action-btn message__options-btn">
+      <%- image_tag("menu-dots-horizontal.svg", {"size": 20, "class": "colorize--black", "aria": {"hidden": "true"}}) %>
+      <span class="for-screen-reader">Message options</span>
+    </summary>
+
+    <div class="message__actions-menu border shadow" data-popup-target="menu">
+      <div class="quick-boosts">
+<% for reaction in emoji_reactions() %>
+          <form data-turbo-frame="boosting_message_<%= m["client_message_id"] %>" data-action="popup#close" action="/messages/<%= m["_key"] %>/boosts" accept-charset="UTF-8" method="post">
+            <input type="hidden" name="boost[content]" id="boost_content" value="<%= reaction[0] %>" autocomplete="off" />
+            <button name="button" type="submit" title="<%= reaction[1] %>" class="btn message__action-btn" data-emoji="<%= reaction[0] %>">
+              <figure class="margin-none boost-character"><%= reaction[0] %></figure>
+              <span class="for-screen-reader"><%= reaction[1] %></span>
+</button></form>
+<% end %>
+
+        <a class="btn message__action-btn message__boost-btn" data-turbo-frame="new_boost_message_<%= m["client_message_id"] %>" data-action="soft-keyboard#open popup#close" href="/messages/<%= m["_key"] %>/boosts/new">
+          <%- image_tag("boost.svg", {"class": "colorize--black", "size": 20, "aria": {"hidden": "true"}}) %>
+          <span class="for-screen-reader">New boost</span>
+</a>      </div>
+
+      <div class="flex flex-wrap border-top margin-block-start-half pad-block-start-half message__actions-grid">
+<% if m["content_type"] == "attachment" %>
+          <a class="btn message__action-btn center full-width hide-in-ios-pwa" title="Download" aria-label="Download" href="<%= m["download_path"] %>">
+            <%- image_tag("download.svg", {"class": "colorize--black", "size": 20, "aria": {"hidden": "true"}}) %>
+</a>
+          <button class="btn message__action-btn center full-width" data-controller="web-share" data-action="web-share#share" data-web-share-files-value="<%= m["blob_path"] %>" data-web-share-title-value="<%= m["attachment"]["filename"] %>" title="Share" aria-label="Share">
+            <%- image_tag("share.svg", {"class": "colorize--black", "size": 20, "aria": {"hidden": "true"}}) %>
+</button><% else %>
+          <button class="btn message__action-btn center full-width" data-action="reply#reply" title="Reply" aria-label="Reply">
+            <%- image_tag("reply.svg", {"class": "colorize--black", "size": 20, "aria": {"hidden": "true"}}) %>
+</button><% end %>
+
+        <button class="btn message__action-btn center full-width" title="Copy link" aria-label="Copy link" data-controller="copy-to-clipboard" data-action="copy-to-clipboard#copy" data-copy-to-clipboard-success-class="btn--success" data-copy-to-clipboard-content-value="<%= m["permalink_url"] %>">
+          <%- image_tag("link.svg", {"class": "colorize--black", "size": 20, "aria": {"hidden": "true"}}) %>
+</button>
+        <a class="btn message__action-btn center full-width message__edit-btn" data-turbo-frame="edit_message_<%= m["client_message_id"] %>" title="Edit" aria-label="Edit" href="/rooms/<%= m["room_id"] %>/messages/<%= m["_key"] %>/edit">
+          <%- image_tag("pencil.svg", {"class": "colorize--black", "size": 20, "aria": {"hidden": "true"}}) %>
+</a>      </div>
+    </div>
+</details></div>

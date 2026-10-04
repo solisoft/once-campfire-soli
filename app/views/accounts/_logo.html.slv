@@ -1,0 +1,1 @@
+<figure class="account-logo avatar <%= style %>"><%- image_tag(@layout["logo_path"], {"alt": "Account logo", "size": 300}) %></figure>

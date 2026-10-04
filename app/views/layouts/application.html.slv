@@ -1,23 +1,75 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %> - Soli App</title>
+<html>
+  <head>
+    <title><%= @page_title ?? "Campfire" %></title>
 
-    <!-- Tailwind CSS (compiled) -->
-    <link rel="stylesheet" href="<%= public_path("css/application.css") %>">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, interactive-widget=resizes-content">
+    <meta name="view-transition" content="same-origin">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="csrf-param" content="_csrf_token" />
+    <meta name="csrf-token" content="<%= @csrf ?? csrf_token() %>" />
+<% unless @layout["user"].nil? %>
+    <meta name="current-user-id" content="<%= @layout["user"]["_key"] %>" /><meta name="current-user-name" content="<%= @layout["user"]["name"] %>" />
+<% end %>
+    <meta name="action-cable-url" content="/cable" />
 
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-</head>
-<body class="min-h-full bg-slate-950 text-white font-sans antialiased">
-    <%= yield %>
+    <meta name="vapid-public-key" content="<%= @layout["vapid_public_key"] %>">
+    <meta name="turbo-prefetch" content="true">
 
-    <!-- HTMx + Alpine.js (Soli's default client stack — see /docs/core-concepts/client-interactivity) -->
-    <script defer src="<%= public_path("js/htmx.min.js") %>"></script>
-    <script defer src="<%= public_path("js/alpine.min.js") %>"></script>
-</body>
+    <link rel="manifest" href="/webmanifest.json">
+    <link rel="icon" href="<%= @layout["logo_path"] %>" type="image/png">
+    <link rel="apple-touch-icon" href="<%= @layout["logo_path"] %>">
+
+    <%- stylesheet_link_tags() %>
+<% unless @layout["custom_styles"].blank? %>
+    <style data-turbo-track="reload"><%- @layout["custom_styles"] %></style>
+<% end %>
+
+    <%- javascript_importmap_tags() %>
+
+    <%- yield "head" %>
+  </head>
+
+  <body class="<%= [@body_class, @layout["admin_and_logo_classes"]].filter { |c| !c.blank? }.join(" ") %>" data-controller="local-time lightbox">
+    <a href="#main-content" class="skip-navigation btn">Skip to main content</a>
+
+    <nav id="nav">
+      <%- yield "nav" %>
+    </nav>
+
+<% notice = @flash_notice ?? @flash_alert %>
+<% unless notice.nil? %>
+    <div class="flash" data-controller="element-removal" data-action="animationend->element-removal#remove">
+      <div class="flash__inner shadow" style="<%= @flash_alert.nil? ? "" : "--flash-background: var(--color-negative)" %>">
+<% if @flash_alert.nil? %>
+          <%- image_tag("check.svg", {"aria": {"hidden": true}, "size": 24, "class": "colorize--white"}) %></span>
+<% else %>
+          <%- image_tag("alert.svg", {"aria": {"hidden": true}, "size": 24, "class": "colorize--white"}) %></span>
+<% end %>
+      </div>
+      <span class="for-screen-reader" role="alert" aria-atomic="true"><%= notice %></span>
+    </div>
+<% end %>
+
+    <main id="main-content">
+      <%- yield %>
+
+      <footer id="footer">
+        <%- yield "footer" %>
+      </footer>
+    </main>
+
+    <aside id="sidebar" data-controller="toggle-class" data-toggle-class-toggle-class="open">
+      <%- yield "sidebar" %>
+    </aside>
+
+    <%- partial("layouts/lightbox") %>
+
+    <a href="https://once.com" id="app-logo" target="_blank" aria-label="Once software from 37signals home page">
+      <%- image_tag("campfire-icon.png", {"alt": "Campfire logo", "width": 256, "height": 216}) %>
+    </a>
+  </body>
 </html>
