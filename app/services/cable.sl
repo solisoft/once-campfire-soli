@@ -60,10 +60,11 @@ class Cable
   end
 
   # User#close_remote_connections: every socket of the user, told whether to reconnect.
+  # Sockets are tracked per user in SoliKV (ws_clients_in is a stub in Soli 2.x).
   static def disconnect_user(user_key, reconnect)
-    clients = ws_clients_in("cable_user:" + user_key) rescue []
+    clients = KV.smembers("campfire:cable:user:" + user_key) rescue []
     payload = json_stringify({"type": "disconnect", "reason": "remote", "reconnect": reconnect})
-    for id in clients
+    for id in (clients.is_a?("array") ? clients : [])
       ws_send(id, payload) rescue nil
       ws_close(id, "remote") rescue nil
     end
@@ -105,10 +106,17 @@ class Cable
       return {"send": json_stringify({"type": "disconnect", "reason": "unauthorized", "reconnect": false}), "close": "unauthorized"}
     end
 
-    {"send": json_stringify({"type": "welcome"}), "join": "cable_user:" + user["_key"]}
+    KV.sadd("campfire:cable:user:" + user["_key"], event["connection_id"]) rescue nil
+    KV.set("campfire:cable:connection:" + event["connection_id"], user["_key"], 86400) rescue nil
+    {"send": json_stringify({"type": "welcome"})}
   end
 
   static def disconnect(event)
+    user_key = KV.get("campfire:cable:connection:" + event["connection_id"]) rescue nil
+    unless user_key.nil?
+      KV.srem("campfire:cable:user:" + user_key, event["connection_id"]) rescue nil
+      KV.delete("campfire:cable:connection:" + event["connection_id"]) rescue nil
+    end
     key = "campfire:cable:presence:" + event["connection_id"]
     keys = KV.smembers(key) rescue []
     for membership_key in (keys ?? [])

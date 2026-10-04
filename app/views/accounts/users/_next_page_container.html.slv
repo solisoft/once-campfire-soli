@@ -1,0 +1,1 @@
+<%- turbo_frame_tag("next_page_container", {"loading": "lazy", "class": "flex center", "src": "/account/users?page=" + str(page)}, "\n  <div class=\"spinner center\"></div>\n") %>

@@ -166,4 +166,87 @@ class User < Model
 
     user
   end
+
+  # User.active_bots.ordered
+  static def active_bots_ordered
+    rows = @sdbql{ FOR u IN users FILTER u.status == "active" AND u.role == "bot" SORT LOWER(u.name), u._key RETURN u }
+    Db.array(rows)
+  end
+
+  # User.active_bots.find
+  static def find_active_bot(key)
+    user = User.find_hash(key)
+    return nil if user.nil? || user["role"] != "bot" || user["status"] != "active"
+
+    user
+  end
+
+  # User.active.find
+  static def find_active(key)
+    user = User.find_hash(key)
+    return nil if user.nil? || user["status"] != "active"
+
+    user
+  end
+
+  # AccountsController#account_users.ordered.without_bots: administrators also see the banned.
+  static def account_users_ordered(with_banned)
+    statuses = with_banned ? ["active", "banned"] : ["active"]
+    rows = @sdbql{ FOR u IN users FILTER u.status IN #{statuses} AND u.role != "bot" SORT LOWER(u.name), u._key RETURN u }
+    Db.array(rows)
+  end
+
+  # Autocompletable::UsersController: active users (of a room when room_key is given) whose
+  # name contains query, ignoring case (SQLite's LIKE), ordered by name, one page of them.
+  static def autocompletable(room_key, query, offset, limit)
+    q = query.to_s
+    if room_key.nil?
+      rows = @sdbql{
+        LET found = (
+          FOR u IN users FILTER u.status == "active"
+            FILTER #{q} == "" OR LIKE(u.name, CONCAT("%", #{q}, "%"), true)
+            SORT LOWER(u.name), u._key
+            RETURN u
+        )
+        RETURN SLICE(found, #{offset}, #{limit})
+      }
+      return Db.first(rows) ?? []
+    end
+
+    rk = room_key
+    rows = @sdbql{
+      LET found = (
+        FOR m IN memberships FILTER m.room_id == #{rk}
+          FOR u IN users FILTER u._key == m.user_id AND u.status == "active"
+            FILTER #{q} == "" OR LIKE(u.name, CONCAT("%", #{q}, "%"), true)
+            SORT LOWER(u.name), u._key
+            RETURN u
+      )
+      RETURN SLICE(found, #{offset}, #{limit})
+    }
+    Db.first(rows) ?? []
+  end
+
+  static def set_role(key, role)
+    User.update(key, {"role": role, "updated_at": Clock.now})
+  end
+
+  # User::Bot#reset_bot_key
+  static def reset_bot_key(key)
+    User.update(key, {"bot_token": User.generate_bot_token, "updated_at": Clock.now})
+  end
+
+  # User#deactivate: close the sockets, drop memberships (direct rooms excepted), push
+  # subscriptions, searches and sessions, then mark the user deactivated under a freed email.
+  static def deactivate(user)
+    key = user["_key"]
+    Cable.disconnect_user(key, false) rescue nil
+    Membership.delete_for_user_without_direct_rooms(key)
+    PushSubscription.destroy_for_user(key)
+    Search.clear_for(key)
+    Session.destroy_for_user(key)
+    email = user["email_address"]
+    email = email.replace("@", "-deactivated-" + uuid_v4() + "@") unless email.nil?
+    User.update(key, {"status": "deactivated", "email_address": email, "updated_at": Clock.now})
+  end
 end

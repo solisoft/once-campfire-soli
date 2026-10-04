@@ -1,0 +1,1 @@
+<%- partial("messages/boosts/boosts", {"m": @m}) %>

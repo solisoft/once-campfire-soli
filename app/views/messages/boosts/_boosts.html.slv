@@ -2,7 +2,7 @@
   <div class="boosts flex flex-wrap align-center gap full-width" style="--column-gap: 0.4ch; --row-gap: 0"
       data-controller="turbo-streaming" data-action="turbo:submit-start->turbo-streaming#unsubscribe">
     <div class="flex-inline flex-wrap gap" id="boosts_message_<%= m["client_message_id"] %>" data-turbo-streaming-target="container">
-<% for boost in m["boosts"] %><%- partial("messages/boosts/boost", {"boost": boost}) %><% end %>
+<%- m["boosts_html"] %>
     </div>
 
     <turbo-frame id="new_boost_message_<%= m["client_message_id"] %>">

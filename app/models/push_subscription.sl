@@ -64,4 +64,27 @@ class PushSubscription < Model
     uk = user_key
     @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} REMOVE p IN push_subscriptions }
   end
+
+  # @push_subscriptions.create: the subscription, or nil when the endpoint is refused.
+  static def create_for(user_key, endpoint, p256dh, auth, user_agent)
+    return nil unless PushSubscription.endpoint_error(endpoint).nil?
+
+    now = Clock.now
+    Ids.create(PushSubscription, {"user_id": user_key, "endpoint": endpoint, "p256dh_key": p256dh, "auth_key": auth,
+                                  "user_agent": user_agent, "created_at": now, "updated_at": now})
+  end
+
+  static def destroy_for(user_key, key)
+    uk = user_key
+    k = str(key)
+    @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} AND p._key == #{k} REMOVE p IN push_subscriptions }
+  end
+
+  # The subscription with the badge its notifications carry: user.memberships.unread.count.
+  static def with_badge(subscription)
+    uk = subscription["user_id"]
+    rows = @sdbql{ RETURN LENGTH(FOR m IN memberships FILTER m.user_id == #{uk} AND m.unread_at != null RETURN 1) }
+    subscription["badge"] = Db.first(rows) ?? 0
+    subscription
+  end
 end

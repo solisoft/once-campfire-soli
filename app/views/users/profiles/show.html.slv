@@ -1,0 +1,102 @@
+<% content_for "nav" do %>
+  <div class="flex-item-justify-start">
+    <%- link_back_to(@back_url) %>
+  </div>
+
+  <div class="flex-item-justify-end">
+    <form data-controller="sessions" action="/session" accept-charset="UTF-8" method="post"><%- method_hidden_field("delete") %><%- csrf_hidden_field() %>
+      <input type="hidden" name="push_subscription_endpoint" id="push_subscription_endpoint" data-sessions-target="pushSubscriptionEndpoint" />
+
+      <button class="btn" data-action="sessions#logout:prevent">
+        <%- image_tag("logout.svg", {"aria": {"hidden": "true"}}) %>
+        <span class="for-screen-reader">Log out</span>
+      </button>
+</form>  </div>
+<% end %>
+
+<section class="panel flex flex-column gap" style="view-transition-name: avatar-<%= @user["_key"] %>">
+  <%- partial("pwa/install_instructions", {"platform": @platform}) %>
+
+  <div class="align-center center avatar__form gap" data-controller="upload-preview">
+    <form class="txt-medium" data-controller="form" enctype="multipart/form-data" action="/users/me/profile" accept-charset="UTF-8" method="post"><%- method_hidden_field("patch") %><%- csrf_hidden_field() %>
+      <label class="btn input--file">
+        <%- image_tag("camera.svg", {"aria": {"hidden": "true"}, "size": 20}) %>
+        <input id="file" class="input" accept="image/*" data-upload-preview-target="input" data-action="upload-preview#previewImage change-&gt;form#submit" type="file" name="user[avatar]" />
+        <span class="for-screen-reader">Upload avatar</span>
+      </label>
+</form>
+    <form data-controller="form" enctype="multipart/form-data" action="/users/me/profile" accept-charset="UTF-8" method="post"><%- method_hidden_field("patch") %><%- csrf_hidden_field() %>
+      <label class="btn avatar input--file txt-xx-large">
+        <%- image_tag(@user["avatar_path"], {"aria": {"hidden": "true"}, "data": {"upload_preview_target": "image"}, "size": 300}) %>
+        <input id="file" class="input" accept="image/*" data-upload-preview-target="input" data-action="upload-preview#previewImage change-&gt;form#submit" type="file" name="user[avatar]" />
+        <span class="for-screen-reader">Avatar</span>
+      </label>
+</form>
+<% unless @user["avatar"].nil? %>
+      <form class="button_to" method="post" action="/users/<%= @user["_key"] %>/avatar"><%- method_hidden_field("delete") %><button class="btn btn--negative txt-small avatar__delete-btn" type="submit">
+        <%- image_tag("minus.svg", {"aria": {"hidden": "true"}, "size": 20}) %>
+        <span class="for-screen-reader">Delete avatar</span>
+</button></form>
+<% end %>
+  </div>
+
+  <form data-controller="form" action="/users/me/profile" accept-charset="UTF-8" method="post"><%- method_hidden_field("patch") %><%- csrf_hidden_field() %>
+    <div class="flex flex-column gap">
+      <div class="flex align-center gap">
+        <%- translation_button("user_name") %>
+
+        <label class="flex align-center gap flex-item-grow input input--actor">
+          <input class="input txt-large " autocomplete="name" placeholder="Enter your name" autofocus="autofocus" required="required" data-1p-ignore="true" type="text" value="<%= @user["name"] %>" name="user[name]" id="user_name" />
+          <%- image_tag("person.svg", {"aria": {"hidden": "true"}, "size": 24, "class": "colorize--black"}) %>
+        </label>
+      </div>
+
+      <div class="flex align-center gap">
+        <%- translation_button("email_address") %>
+
+        <label class="flex align-center gap flex-item-grow input input--actor">
+          <input class="input txt-large" value="<%= @user["email_address"] %>" autocomplete="username" placeholder="Enter your email address" type="email" name="user[email_address]" id="user_email_address" />
+          <%- image_tag("email.svg", {"aria": {"hidden": "true"}, "size": 24, "class": "colorize--black"}) %>
+        </label>
+      </div>
+
+      <div class="flex align-center gap">
+        <%- translation_button("update_password") %>
+
+        <label class="flex align-center gap flex-item-grow input input--actor">
+          <input class="input txt-large" autocomplete="new-password" placeholder="Change password" maxlength="72" size="72" type="password" name="user[password]" id="user_password" />
+          <%- image_tag("password.svg", {"aria": {"hidden": "true"}, "size": 24, "class": "colorize--black"}) %>
+        </label>
+      </div>
+
+      <div class="flex align-start gap">
+        <%- translation_button("bio") %>
+
+        <label class="flex align--center gap flex-item--grow input input--actor">
+          <textarea class="input txt-large" placeholder="A few words about yourself…" maxlength="200" rows="3" name="user[bio]" id="user_bio">
+<%= @user["bio"] %></textarea>
+          <%- image_tag("bio.svg", {"aria": {"hidden": "true"}, "size": 24, "class": "colorize--black"}) %>
+        </label>
+      </div>
+
+      <button class="btn btn--reversed center txt-large" type="submit"><%- image_tag("check.svg", {"aria": {"hidden": "true"}, "size": 20}) %><span class="for-screen-reader">Save changes</span></button>
+    </div>
+</form>
+  <div class="margin-block pad-inline pad-block fill-shade border-radius">
+    <menu class="flex flex-column gap margin-none pad">
+<% for membership in @shared_memberships %>
+      <%- partial("users/profiles/membership", {"membership": membership}) %>
+<% end %>
+
+<% if @direct_memberships.length > 0 && @shared_memberships.length > 0 %>
+        <hr class="separator full-width" style="--border-style: solid">
+<% end %>
+
+<% for membership in @direct_memberships %>
+      <%- partial("users/profiles/membership", {"membership": membership}) %>
+<% end %>
+    </menu>
+  </div>
+
+  <%- partial("users/profiles/transfer", {"transfer": @transfer}) %>
+</section>

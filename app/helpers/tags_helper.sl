@@ -136,3 +136,14 @@ end
 def turbo_stream_from(signed_stream_name, channel = "Turbo::StreamsChannel")
   "<turbo-cable-stream-source channel=\"" + channel + "\" signed-stream-name=\"" + html_escape(signed_stream_name) + "\"></turbo-cable-stream-source>"
 end
+
+# local_datetime_tag for a time already in ISO 8601.
+def local_iso_time_tag(iso, style = "time", attrs = {})
+  options = {}
+  attrs.each do |k, v|
+    options[k] = v
+  end
+  options["datetime"] = iso
+  options["data"] = {"local_time_target": style}
+  content_tag("time", "", options)
+end

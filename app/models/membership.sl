@@ -72,6 +72,26 @@ class Membership < Model
     Db.first(rows)
   end
 
+  # with_room_for, plus every member's state for a new message's unread marks and pushes.
+  static def with_room_and_members(user_key, room_key)
+    return nil if user_key.nil? || room_key.nil?
+
+    uk = user_key
+    rk = str(room_key)
+    rows = @sdbql{
+      FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == #{uk}
+        FOR r IN rooms FILTER r._key == m.room_id
+          LIMIT 1
+          LET members = (
+            FOR o IN memberships FILTER o.room_id == #{rk}
+              RETURN {_key: o._key, user_id: o.user_id, involvement: o.involvement, unread_at: o.unread_at, connected_at: o.connected_at,
+                      subscribed: LENGTH(FOR p IN push_subscriptions FILTER p.user_id == o.user_id LIMIT 1 RETURN 1) > 0}
+          )
+          RETURN {membership: m, room: r, members: members}
+    }
+    Db.first(rows)
+  end
+
   static def set_involvement(membership, involvement)
     k = membership["_key"]
     now = Clock.now
@@ -153,6 +173,48 @@ class Membership < Model
             RETURN MERGE(m, {room: r})
       }
     end
+    Db.array(rows)
+  end
+
+  # user.memberships.without_direct_rooms.delete_all
+  static def delete_for_user_without_direct_rooms(user_key)
+    uk = user_key
+    @sdbql{
+      LET directs = (FOR r IN rooms FILTER r.type == "Rooms::Direct" RETURN r._key)
+      FOR m IN memberships FILTER m.user_id == #{uk} AND m.room_id NOT IN directs
+        REMOVE m IN memberships
+    }
+  end
+
+  # user.rooms.without_directs.ordered
+  static def rooms_without_directs_for(user_key)
+    uk = user_key
+    rows = @sdbql{
+      FOR m IN memberships FILTER m.user_id == #{uk}
+        FOR r IN rooms FILTER r._key == m.room_id AND r.type != "Rooms::Direct"
+          SORT LOWER(r.name), r._key
+          RETURN r
+    }
+    Db.array(rows)
+  end
+
+  # Current.user.memberships.with_ordered_room for users/profiles/show: each membership with
+  # its room and, for a direct room, the names of the other members in users' id order (the
+  # order room.users comes back in), for room_display_name.
+  static def with_rooms_and_other_names_for(user_key)
+    uk = user_key
+    rows = @sdbql{
+      FOR m IN memberships FILTER m.user_id == #{uk}
+        FOR r IN rooms FILTER r._key == m.room_id
+          SORT LOWER(r.name), r._key
+          LET others = r.type != "Rooms::Direct" ? [] : (
+            FOR o IN memberships FILTER o.room_id == r._key AND o.user_id != #{uk}
+              FOR u IN users FILTER u._key == o.user_id
+                SORT TO_NUMBER(u._key)
+                RETURN u.name
+          )
+          RETURN MERGE(m, {room: r, other_names: others})
+    }
     Db.array(rows)
   end
 end

@@ -1,0 +1,9 @@
+<% content_for "nav" do %>
+  <div class="flex-item-justify-start">
+    <%- link_back_to(@back_path) %>
+  </div>
+<% end %>
+
+<section class="panel txt-align-center" style="view-transition-name: <%= @view_transition_name ?? "new-room" %>">
+  <%- content %>
+</section>

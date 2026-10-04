@@ -1,0 +1,23 @@
+<li class="flex align-center gap margin-none" data-value="<%= user["name"].downcase %>">
+  <figure class="avatar flex-item-no-shrink" style="--avatar-size: 4ch;">
+    <%- avatar_tag(user, {"loading": "lazy"}) %>
+  </figure>
+
+  <div class="min-width">
+    <div class="overflow-ellipsis fill-shade"><strong><%= user["name"] %></strong></div>
+  </div>
+
+  <hr class="separator" aria-hidden="true">
+
+<% if @can_administer %>
+<% if user["_key"] == @current_user_key && @room["_key"].nil? %>
+      <input type="hidden" name="user_ids[]" value="<%= user["_key"] %>" />
+      <%- image_tag("check.svg", {"size": 20, "class": "colorize--black flex-item-no-shrink", "aria": {"hidden": "true"}}) %>
+<% else %>
+      <label class="switch flex-item-no-shrink">
+        <input type="checkbox" name="user_ids[]" value="<%= user["_key"] %>" class="switch__input"<%- selected ? " checked=\"checked\"" : "" %> />
+        <span class="switch__btn round"></span>
+        <span class="for-screen-reader">Give <%= user["name"] %> access to this room</span>
+      </label>
+<% end %>
+<% end %></li>

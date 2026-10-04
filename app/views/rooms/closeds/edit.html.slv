@@ -1,0 +1,1 @@
+<%- partial("rooms/layouts/edit", {"room": @room, "content": partial("rooms/layouts/form", {"room": @room, "content": partial("rooms/closeds/form", {})})}) %>

@@ -209,21 +209,27 @@ class RichText
     out
   end
 
+  # The text between URLs comes from Regex.split and the URLs from find_all, so no offsets
+  # are needed (find_all's are bytes, substring's are characters).
   static def link_text(text)
     return text unless text.contains("http") || text.contains("www.")
 
-    out = ""
-    pos = 0
-    for m in Regex.find_all("(?:https?://|www\\.)[^\\s<]+", text)
-      trimmed = Regex.replace("[.,;:!?'\"]+$", m["match"], "")
+    pattern = "(?:https?://|www\\.)[^\\s<]+"
+    urls = Regex.find_all(pattern, text).map { |m| m["match"] }
+    return text if urls.length == 0
+
+    between = Regex.split(pattern, text)
+    out = between[0]
+    for url, i in urls
+      trimmed = Regex.replace("[.,;:!?'\"]+$", url, "")
       while trimmed.ends_with(")") && trimmed.split(")").length > trimmed.split("(").length
-        trimmed = trimmed.substring(0, trimmed.length - 1)
+        trimmed = trimmed.substring(0, trimmed.chars().length - 1)
       end
       href = trimmed.starts_with("www.") ? "http://" + trimmed : trimmed
-      out += text.substring(pos, m["start"]) + "<a target=\"_blank\" href=\"" + href + "\">" + trimmed + "</a>"
-      pos = m["start"] + trimmed.length
+      rest = url.substring(trimmed.chars().length, url.chars().length)
+      out += "<a target=\"_blank\" href=\"" + href + "\">" + trimmed + "</a>" + rest + (i + 1 < between.length ? between[i + 1] : "")
     end
-    out + text.substring(pos)
+    out
   end
 
   # ContentFilters::RemoveSoloUnfurledLinkText: a message that is only the link it unfurled

@@ -67,7 +67,9 @@ class ApplicationController < Controller
   # A page whose surroundings only change with sig: rendered once per worker with markers
   # where the per-request values go (see PageCache), then reassembled from the parts.
   # values maps marker names to strings; the view outputs @marks[name] in their place.
-  def _render_cached_page(view, name, sig, values)
+  # content_sig identifies the values that are too big to hash (the messages): the ETag is
+  # derived from it, sig and the small values, never from the first render's body.
+  def _render_cached_page(view, name, sig, values, content_sig = "")
     @_take_flash
     return @_render_marked(view, values) unless @flash_notice.nil? && @flash_alert.nil?
 
@@ -84,11 +86,19 @@ class ApplicationController < Controller
       PageCache.set(name, cached)
     end
     body = cached["parts"][0]
+    small = []
     for part in cached["parts"].drop(1)
       segments = part.split("%%")
-      body += values[segments[0]] + segments.drop(1).join("%%")
+      value = values[segments[0]]
+      small.push(value) if value.length < 200
+      body += value + segments.drop(1).join("%%")
     end
-    {"status": cached["status"], "headers": cached["headers"], "body": body}
+    headers = {}
+    cached["headers"].each do |k, v|
+      headers[k] = v
+    end
+    headers["ETag"] = "W/\"" + Crypto.md5(name + "|" + sig + "|" + content_sig + "|" + small.join("|")) + "\""
+    {"status": cached["status"], "headers": headers, "body": body}
   end
 
   def _render_marked(view, values)

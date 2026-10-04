@@ -15,7 +15,8 @@ class SearchesController < ApplicationController
     account = req["account"]
     sig = json_stringify([@q, @recent_searches.map { |s| s["query"] }, @return_to_room, @message_count,
                           account["updated_at"], @_current_user["updated_at"], @_current_user["role"]])
-    @_render_cached_page("searches/index", "search:" + @_current_user_key, sig, {"messages": html, "csrf": csrf_token()})
+    @_render_cached_page("searches/index", "search:" + @_current_user_key, sig, {"messages": html, "csrf": csrf_token()},
+                         json_stringify([data["sig"], data["keys"]]))
   end
 
   # POST /searches

@@ -103,6 +103,30 @@ class Room < Model
     updated
   end
 
+  # @room.becomes!(type).update!(name:): one write, then Rooms::Open's grant to everyone
+  # when the room has just become open.
+  static def update_settings(room, type, name)
+    k = room["_key"]
+    now = Clock.now
+    new_name = name ?? room["name"]
+    @sdbql{ FOR r IN rooms FILTER r._key == #{k} UPDATE r WITH {type: #{type}, name: #{new_name}, updated_at: #{now}} IN rooms }
+    updated = Room.find_hash(k)
+    Membership.grant(updated, User.active_ordered.map { |u| u["_key"] }) if type == Room.OPEN && room["type"] != Room.OPEN
+    updated
+  end
+
+  # The users of a room in membership order (room.users), for direct room sidebars.
+  static def users_by_membership(room_key)
+    k = room_key
+    rows = @sdbql{
+      FOR m IN memberships FILTER m.room_id == #{k}
+        FOR u IN users FILTER u._key == m.user_id
+          SORT m.created_at, m._key
+          RETURN u
+    }
+    Db.array(rows)
+  end
+
   static def rename(room, name)
     Room.update(room["_key"], {"name": name, "updated_at": Clock.now})
     Room.find_hash(room["_key"])
@@ -122,7 +146,7 @@ class Room < Model
     rows = @sdbql{
       FOR m IN memberships FILTER m.room_id == #{k}
         FOR u IN users FILTER u._key == m.user_id
-          SORT LOWER(u.name), u._key
+          SORT TO_NUMBER(u._key), u._key
           RETURN u
     }
     Db.array(rows)

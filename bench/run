@@ -57,7 +57,7 @@ DB_PID=$!
 for _ in $(seq 600); do [ -f "$WORK/solidb/.admin_password" ] && curl -s -o /dev/null "localhost:$DB_PORT/_api/health" && break; sleep 0.1; done
 [ -f "$WORK/solidb/.admin_password" ] || { cat "$WORK/solidb.log" >&2; exit 1; }
 
-export SOLIDB_HOST="http://localhost:$DB_PORT" SOLIDB_DATABASE=campfire_bench SOLIDB_USERNAME=admin
+export SOLIDB_HOST="http://localhost:$DB_PORT" SOLIDB_DATABASE=campfire_bench SOLIDB_USERNAME=admin SOLI_DB_DRIVER=1
 SOLIDB_PASSWORD=$(cat "$WORK/solidb/.admin_password")
 export SOLIDB_PASSWORD
 curl -s -o /dev/null -u "admin:$SOLIDB_PASSWORD" -H 'Content-Type: application/json' -X POST \

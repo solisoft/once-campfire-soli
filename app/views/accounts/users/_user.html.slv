@@ -1,0 +1,31 @@
+<% me = user["_key"] == current_user["_key"] %>
+<li class="flex align-center gap margin-none <%= user["status"] == "banned" ? "banned" : "" %>">
+  <figure class="avatar flex-item-no-shrink" style="--avatar-size: 3.75ch;">
+    <%- avatar_tag(user, {"loading": "lazy"}) %>
+  </figure>
+
+  <div class="min-width">
+    <div class="overflow-ellipsis fill-shade"><strong><%= user["name"] %></strong></div>
+  </div>
+
+  <hr class="separator" aria-hidden="true">
+
+<% if can_administer && user["status"] == "active" %>
+<% unless user["bot"] %>
+      <form data-controller="form" action="/account/users/<%= user["_key"] %>" accept-charset="UTF-8" method="post"><input type="hidden" name="_method" value="patch" /><%- csrf_hidden_field() %>
+        <label class="btn txt-small flex-item-no-shrink" for="<%= dom_id("user", user["_key"], "role") %>">
+          <span class="for-screen-reader">Role: <%= user["administrator"] ? "Administrator" : "Member" %></span>
+          <%- image_tag("crown.svg", {"size": 20, "aria": {"hidden": "true"}}) %>
+          <input name="user[role]"<%- me ? " disabled=\"disabled\"" : "" %> type="hidden" value="member" /><input data-action="form#submit" hidden="hidden" id="<%= dom_id("user", user["_key"], "role") %>"<%- me ? " disabled=\"disabled\"" : "" %> type="checkbox" value="administrator"<%- user["administrator"] ? " checked=\"checked\"" : "" %> name="user[role]" />
+        </label>
+</form>
+<% end %>
+<% unless me %>
+      <%- button_to("/account/users/" + user["_key"], {"method": "delete", "class": "btn txt-small flex-item-no-shrink btn--negative", "data": {"turbo_confirm": "Are you sure you want to permanently remove this person from the account? This can’t be undone."}}, image_tag("minus.svg", {"size": 20, "aria": {"hidden": "true"}}) + "<span class=\"for-screen-reader\">Delete " + html_escape(user["name"]) + "</span>") %>
+<% end %>
+<% end %>
+<% if me %>
+    <a class="btn txt-small flex-item-no-shrink" target="_top" href="/users/me/profile">
+      <%- image_tag("pencil.svg", {"size": 20, "aria": {"hidden": "true"}}) %>
+      <span class="for-screen-reader">My settings</span>
+</a><% end %></li>

@@ -1,0 +1,24 @@
+<form action="<%= @form_action %>" accept-charset="UTF-8" method="post"><% unless room["_key"].nil? %><input type="hidden" name="_method" value="patch" /><% end %><%- csrf_hidden_field() %>
+  <div class="flex align-center gap">
+<% if @can_administer %>
+      <%- translation_button("room_name") %>
+
+      <label class="flex-item-grow txt-large">
+        <input name="room[name]" id="room_name" class="input full-width" required="required" autofocus="autofocus" placeholder="Name the room" data-turbo-permanent="true" data-action="keydown.enter-&gt;form#submit:prevent" type="text" value="<%= room["name"] %>" />
+        <span class="for-screen-reader">Name this room</span>
+      </label>
+<% else %>
+      <h1 class="flex-item-grow txt-x-large">
+        <%= room["name"] %>
+      </h1>
+<% end %>
+  </div>
+
+  <hr class="margin-block borderless">
+
+  <section class="room-access margin-block pad-inline fill-shade border-radius">
+    <%- content %>
+  </section>
+
+<% if @can_administer %>  <%- submit_room_button_tag() %>
+<% end %></form>

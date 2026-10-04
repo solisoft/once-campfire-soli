@@ -1,0 +1,15 @@
+<% content_for "nav" do %>
+  <div class="flex-item-justify-start">
+    <%- link_back_to(@back_path) %>
+  </div>
+<% end %>
+
+<section class="panel txt-align-center" style="view-transition-name: edit-room-<%= room["_key"] %>">
+  <%- content %>
+</section>
+
+<% if @can_administer %>
+  <section class="panel txt-align-center">
+    <%- button_to_delete_room(room, @delete_room_url, room["name"]) %>
+  </section>
+<% end %>

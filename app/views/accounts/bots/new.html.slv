@@ -1,0 +1,10 @@
+<% content_for "nav" do %>
+  <div class="flex-item-justify-start">
+    <%- link_back_to("/account/bots") %>
+  </div>
+<% end %>
+
+<section class="panel">
+  <form class="flex flex-column gap" enctype="multipart/form-data" action="/account/bots" accept-charset="UTF-8" method="post"><%- csrf_hidden_field() %>
+<%- partial("accounts/bots/form", {"bot": @bot}) %>
+</form></section>

@@ -1,0 +1,30 @@
+    <h1 class="for-screen-reader">Chat Bot Setup</h1>
+<label class="align-center center avatar__form gap" data-controller="upload-preview">
+  <div class="btn input--file">
+    <%- image_tag("camera.svg", {"aria": {"hidden": "true"}, "size": 20}) %>
+    <input class="input" accept="image/*" data-upload-preview-target="input" data-action="upload-preview#previewImage" type="file" name="user[avatar]" id="user_avatar" />
+    <span class="for-screen-reader">Upload bot avatar</span>
+  </div>
+
+  <div class="avatar input--file txt-xx-large" style="--avatar-size: var(--btn-size);">
+    <%- image_tag(bot["avatar_url"] ?? "default-bot-avatar.svg", {"alt": "Bot avatar", "size": 48, "data": {"upload_preview_target": "image"}}) %>
+  </div>
+</label>
+
+<div class="flex align-center gap">
+  <%- translation_button("bot_name") %>
+  <label class="flex align-center gap flex-item-grow txt-large input input--actor">
+    <input class="input" autocomplete="name" placeholder="Name the bot" autofocus="autofocus" required="required" data-1p-ignore="true" type="text"<%- bot["name"].nil? ? "" : " value=\"" + html_escape(bot["name"]) + "\"" %> name="user[name]" id="user_name" />
+    <%- image_tag("bot.svg", {"aria": {"hidden": "true"}, "size": 24, "class": "colorize--black"}) %>
+  </label>
+</div>
+
+<div class="flex align-center gap">
+  <%- translation_button("webhook_url") %>
+  <label class="flex align-center gap flex-item-grow txt-large input input--actor">
+    <input class="input" placeholder="Webhook URL" type="url"<%- bot["webhook_url"].nil? ? "" : " value=\"" + html_escape(bot["webhook_url"]) + "\"" %> name="user[webhook_url]" id="user_webhook_url" />
+    <%- image_tag("web.svg", {"aria": {"hidden": "true"}, "size": 24, "class": "colorize--black"}) %>
+  </label>
+</div>
+
+<button class="btn btn--reversed center txt-large" type="submit"><%- image_tag("check.svg", {"aria": {"hidden": "true"}, "size": 20}) %><span class="for-screen-reader">Save changes</span></button>

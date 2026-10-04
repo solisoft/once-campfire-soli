@@ -1,0 +1,36 @@
+
+<fieldset>
+  <legend class="gap">
+    <%- image_tag("laptop.svg", {"aria": {"hidden": "true"}, "size": 36, "class": "colorize--black"}) %>
+    <%- image_tag("transfer.svg", {"aria": {"hidden": "true"}, "size": 36, "class": "colorize--black"}) %>
+    <%- image_tag("mobile-phone.svg", {"aria": {"hidden": "true"}, "size": 36, "class": "colorize--black"}) %>
+  </legend>
+
+
+  <div class="flex flex-column gap">
+<% unless transfer["self"] %>
+      <div class="flex align-center gap justify-center">
+        <%- image_tag("crown.svg", {"size": 16, "aria": {"hidden": "true"}, "class": "flex-item-no-shrink colorize--black"}) %>
+        <label for="session_transfer_url">Share to get them back into their account</label>
+      </div>
+<% else %>
+      <label for="session_transfer_url" class="for-screen-reader">Use this link to login automatically on another device</label>
+<% end %>
+
+    <input type="text" class="input" value="<%= transfer["url"] %>" id="session_transfer_url" readonly>
+
+    <div class="flex align-center center gap">
+      <a class="btn" data-lightbox-target="image" data-action="lightbox#open" data-lightbox-url-value="<%= transfer["qr_path"] %>" href="<%= transfer["qr_path"] %>">
+        <span class="for-screen-reader">Show auto-login QR code</span>
+        <%- image_tag("qr-code.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "colorize--black"}) %>
+</a>
+      <button class="btn" data-controller="copy-to-clipboard" data-action="copy-to-clipboard#copy" data-copy-to-clipboard-success-class="btn--success" data-copy-to-clipboard-content-value="<%= transfer["url"] %>">
+        <span class="for-screen-reader">Copy auto-login link</span>
+        <%- image_tag("copy-paste.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "flex-item-no-shrink colorize--black"}) %>
+</button>
+      <button class="btn" hidden="hidden" data-controller="web-share" data-action="web-share#share" data-web-share-url-value="<%= transfer["url"] %>" data-web-share-text-value="This is your own private sign-in URL, DO NOT SHARE IT. Use it to sign-in on another device or if you get locked out." data-web-share-title-value="Your sign-in link">
+        <span class="for-screen-reader">Share auto-login link</span>
+        <%- image_tag("share.svg", {"aria": {"hidden": "true"}, "size": 20, "class": "flex-item-no-shrink colorize--black"}) %>
+</button>    </div>
+  </div>
+</fieldset>

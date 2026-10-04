@@ -44,9 +44,12 @@ class Message < Model
 
   # room.messages.create_with_attachment! with its after_create_commit (Room#receive) and the
   # presentation it will be shown with, in one statement: the message goes in with its HTML,
-  # the room is touched, the members who aren't watching are marked unread. Returns the
-  # message and its members, each flagged when a push notification may be due.
-  static def create_message(room, creator, body_html, attachment, client_message_id, base_url)
+  # the room is touched, and members who aren't watching become unread.
+  #
+  # members are the room's memberships as Membership.with_room_and_members read them. Only the
+  # ones that turn unread are written: Room#unread_memberships rewrites unread_at on every
+  # message, but nothing reads that time beyond whether it is set.
+  static def create_message(room, creator, body_html, attachment, client_message_id, base_url, members)
     now = Clock.now
     plain = attachment.nil? ? RichText.plain_text(body_html) : ""
     plain = attachment["filename"] if plain.blank? && !attachment.nil?
@@ -61,6 +64,17 @@ class Message < Model
     ck = creator["_key"]
     cutoff = now - Membership.CONNECTION_TTL_MS
     mentioned = attachment.nil? ? RichText.mentioned_user_keys(body_html) : []
+    to_mark = []
+    push_to = []
+    for m in members
+      unread = m["user_id"] != ck && m["involvement"] != "invisible" && (m["connected_at"].nil? || m["connected_at"] < cutoff)
+      next unless unread
+
+      to_mark.push(m["_key"]) if m["unread_at"].nil?
+      involved = m["involvement"] == "everything" || (m["involvement"] == "mentions" && mentioned.include?(m["user_id"]))
+      push_to.push(m["user_id"]) if m["subscribed"] && involved
+    end
+
     rows = nil
     for attempt in 0..5
       doc["_key"] = Ids.generate
@@ -70,20 +84,14 @@ class Message < Model
         INSERT #{doc} INTO messages
         FOR r IN rooms FILTER r._key == #{rk}
           UPDATE r WITH {updated_at: #{now}} IN rooms
-          FOR m IN memberships FILTER m.room_id == #{rk}
-            LET unread = m.user_id != #{ck} AND m.involvement != "invisible" AND (m.connected_at == null OR m.connected_at < #{cutoff})
-            UPDATE m WITH (unread ? {unread_at: #{now}, updated_at: #{now}} : {}) IN memberships
-            LET subscribed = LENGTH(FOR p IN push_subscriptions FILTER p.user_id == m.user_id LIMIT 1 RETURN 1) > 0
-            RETURN {user: m.user_id, push: unread AND subscribed AND (m.involvement == "everything" OR (m.involvement == "mentions" AND m.user_id IN #{mentioned}))}
+          FOR k IN #{to_mark}
+            UPDATE k WITH {unread_at: #{now}, updated_at: #{now}} IN memberships
       }
       break if rows.is_a?("array")
     end
-    members = Db.array(rows)
-    pushes = members.filter { |m| m["push"] }
-    if pushes.length > 0
-      PushQueue.enqueue({"room_id": rk, "message_id": doc["_key"], "user_ids": pushes.map { |m| m["user"] }})
-    end
-    {"message": doc, "members": members.map { |m| m["user"] }}
+    Db.array(rows)
+    PushQueue.enqueue({"room_id": rk, "message_id": doc["_key"], "user_ids": push_to}) if push_to.length > 0
+    {"message": doc, "members": members.map { |m| m["user_id"] }}
   end
 
   static def update_body(message, body_html)
@@ -109,6 +117,13 @@ class Message < Model
     Attachments.delete_for(message["attachment"])
     @sdbql{ FOR m IN messages FILTER m._key == #{k} REMOVE m IN messages }
     Room.touch(message["room_id"])
+  end
+
+  # user.messages (User::Bannable#remove_banned_content)
+  static def created_by(user_key)
+    uk = user_key
+    rows = @sdbql{ FOR m IN messages FILTER m.creator_id == #{uk} SORT m.created_at, m._key RETURN m }
+    Db.array(rows)
   end
 
   static def destroy_all_in_room(room_key)

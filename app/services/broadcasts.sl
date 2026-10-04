@@ -4,9 +4,10 @@ class Broadcasts
   # ping to each member (UnreadRoomsChannel, per user).
   static def message_created(room, member_keys, html)
     Cable.broadcast_stream("room:" + room["_key"] + ":messages", TurboStream.append(Room.dom_id(room, "messages"), html))
-    payload = json_stringify({"roomId": Cable.numeric(room["_key"])})
+    identifier = json_stringify({"channel": "UnreadRoomsChannel"})
+    message = json_stringify({"identifier": identifier, "message": {"roomId": Cable.numeric(room["_key"])}})
     for user_key in member_keys
-      Cable.broadcast_raw("user_" + user_key + "_unreads", payload)
+      Cable.send_to_channel(Cable.channel_name("user_" + user_key + "_unreads", identifier), message)
     end
   end
 end

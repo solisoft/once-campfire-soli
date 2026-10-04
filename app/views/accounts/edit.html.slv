@@ -1,0 +1,107 @@
+<% content_for "nav" do %>
+  <div class="flex-item-justify-start">
+    <%- link_back_to(@back_path) %>
+  </div>
+
+<% if @current_user["administrator"] %>
+    <div class="flex align-center gap flex-item-justify-end">
+      <a class="btn" style="view-transition-name: chat-bots" href="/account/bots">
+        <%- image_tag("bot.svg", {"aria": {"hidden": "true"}, "size": 20}) %>
+        <span class="for-screen-reader">Set up chat bots</span>
+</a>
+      <a class="btn" style="view-transition-name: custom-styles" href="/account/custom_styles/edit">
+        <%- image_tag("art.svg", {"size": 20, "aria": {"hidden": "true"}}) %>
+        <span class="for-screen-reader">Custom styles</span>
+</a>    </div>
+<% end %>
+<% end %>
+
+<section class="panel txt-align-center flex flex-column gap" style="view-transition-name: account-settings">
+<% if @can_administer %>
+    <div class="align-center center avatar__form gap" data-controller="upload-preview">
+      <form class="txt--medium" data-controller="form" enctype="multipart/form-data" action="/account" accept-charset="UTF-8" method="post"><input type="hidden" name="_method" value="patch" /><%- csrf_hidden_field() %>
+        <label class="btn input--file">
+          <%- image_tag("camera.svg", {"aria": {"hidden": "true"}, "size": 20}) %>
+          <input class="input" accept="image/*" data-action="upload-preview#previewImage change-&gt;form#submit" type="file" name="account[logo]" id="account_logo" />
+          <span class="for-screen-reader">Upload logo</span>
+        </label>
+</form>
+      <form data-controller="form" enctype="multipart/form-data" action="/account" accept-charset="UTF-8" method="post"><input type="hidden" name="_method" value="patch" /><%- csrf_hidden_field() %>
+        <label class="btn avatar input--file account-logo txt-xx-large">
+          <%- image_tag(@logo_path, {"role": "presentation", "size": 48, "data": {"upload_preview_target": "image"}}) %>
+          <input class="input" accept="image/*" data-action="upload-preview#previewImage change-&gt;form#submit" type="file" name="account[logo]" id="account_logo" />
+          <span class="for-screen-reader">Upload logo</span>
+        </label>
+</form>
+<% if @logo_attached %>
+      <%- button_to(@logo_path, {"method": "delete", "class": "btn btn--negative txt-small avatar__delete-btn"}, image_tag("minus.svg", {"aria": {"hidden": "true"}, "size": 20}) + "<span class=\"for-screen-reader\">Delete logo</span>") %>
+<% end %>
+    </div>
+
+    <form class="flex flex-column gap" data-controller="form" action="/account" accept-charset="UTF-8" method="post"><input type="hidden" name="_method" value="patch" /><%- csrf_hidden_field() %>
+      <div class="flex align-center gap">
+        <%- translation_button("account_name") %>
+
+        <label class="flex align-center gap flex-item-grow">
+          <input class="input txt-large" autocomplete="off" placeholder="Name this account" autofocus="autofocus" data-action="keydown.enter-&gt;form#submit" type="text" value="<%= @account["name"] %>" name="account[name]" id="account_name" />
+        </label>
+
+        <button name="button" type="submit" class="btn btn--reversed center">
+          <%- image_tag("check.svg", {"aria": {"hidden": "true"}, "size": 20}) %>
+          <span class="for-screen-reader">Save changes</span>
+</button>      </div>
+</form>
+    <div class="margin-block-start pad-block pad-inline-double fill-shade border-radius">
+      <form class="flex align-center gap center" data-controller="form" action="/account" accept-charset="UTF-8" method="post"><input type="hidden" name="_method" value="put" /><%- csrf_hidden_field() %>
+        <div class="flex-item-grow flex align-center gap txt-align-start">
+          <%- image_tag("crown.svg", {"class": "colorize--black", "aria": {"hidden": "true"}, "size": 18}) %> Must be admin to create new rooms
+        </div>
+
+          <input value="<%= @restrict_room_creation ? "false" : "true" %>" type="hidden" name="account[settings][restrict_room_creation_to_administrators]" id="account_settings_restrict_room_creation_to_administrators" />
+
+        <label class="switch">
+          <input type="checkbox"
+                class="switch__input"
+                <%= @restrict_room_creation ? "checked" : "" %>
+                data-action="change->form#submit">
+          <span class="switch__btn round"></span>
+          <span class="for-screen-reader">
+            Must be admin to create new rooms
+          </span>
+        </label>
+
+</form>    </div>
+<% else %>
+    <%- partial("accounts/logo", {"style": "txt-xx-large center"}) %>
+    <h1 class="flex-item-grow txt-x-large"><%= @account["name"] %></h1>
+<% end %>
+
+  <div class="margin-block pad-inline pad-block-start fill-shade border-radius">
+    <%- partial("accounts/invite") %>
+
+    <hr class="margin-block separator full-width" style="--border-style: solid">
+
+    <menu class="flex flex-column gap margin-none pad">
+      <turbo-frame id="account_users">
+<% for user in @administrators %>
+<%- partial("accounts/users/user", {"user": user, "current_user": @current_user, "can_administer": @can_administer}) %>
+<% end %>
+
+<% if @administrators.length > 0 && @members.length > 0 %>
+          <hr class="separator full-width" style="--border-style: solid">
+<% end %>
+
+<% for user in @members %>
+<%- partial("accounts/users/user", {"user": user, "current_user": @current_user, "can_administer": @can_administer}) %>
+<% end %>
+<% unless @next_page.nil? %>
+<%- partial("accounts/users/next_page_container", {"page": @next_page}) %>
+<% end %>
+      </turbo-frame>
+    </menu>
+  </div>
+</section>
+
+<% content_for "footer" do %>
+  <div class="txt-align-center center margin-block-double txt-subtle">Campfire&trade; version <span class="version-badge"><%= @version %></span></div>
+<% end %>

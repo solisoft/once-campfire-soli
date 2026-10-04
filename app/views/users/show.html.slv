@@ -1,0 +1,62 @@
+<% content_for "nav" do %>
+  <div class="flex-item-justify-start">
+    <%- link_back_to(@back_url) %>
+  </div>
+
+  <div class="flex align-center gap flex-item-justify-end">
+<% if @is_self %>
+      <a class="btn" href="/users/me/profile">
+        <%- image_tag("pencil.svg", {"aria": {"hidden": "true"}}) %>
+        <span class="for-screen-reader">Edit my profile</span>
+</a><% end %>  </div>
+<% end %>
+
+<section class="panel txt-align-center">
+  <div class="flex flex-column gap <%= @user["status"] == "banned" ? "banned" : "" %>">
+    <div class="avatar txt-xx-large center" style="background: white">
+      <%- image_tag(@user["avatar_path"], {"alt": "Profile avatar", "class": "avatar"}) %>
+    </div>
+
+<% if @user["bot"] %>
+      <div class="pad-double--inline push--inline push--block-start">
+<% if @user["status"] == "active" %>
+          <form class="button_to" method="post" action="/rooms/directs?user_ids%5B%5D=<%= @user["_key"] %>"><button class="btn btn--primary full-width txt--large" type="submit"><%- image_tag("messages.svg") %></button></form>
+<% else %>
+          <div><%= @user["name"] %> is no longer on this account</div>
+<% end %>
+      </div>
+<% elsif @user["status"] != "deactivated" %>
+        <div class="flex flex-column gap" style="--row-gap: calc(var(--block-space) / 3)">
+          <h1 class="txt-x-large txt-tight-lines margin-none"><%= @user["name"] %></h1>
+<% if @can_administer %>
+            <div><a href="mailto:<%= @user["email_address"] %>"><%= @user["email_address"] %></a></div>
+<% end %>
+          <div><%= @user["bio"] %></div>
+        </div>
+
+<% if @user["status"] == "active" %>
+          <div class="pad-inline-double margin-inline margin-block-start">
+            <form class="button_to" method="post" action="/rooms/directs?user_ids%5B%5D=<%= @user["_key"] %>"><button class="btn btn--reversed full-width txt-large" type="submit">
+              <%- image_tag("messages.svg", {"aria": {"hidden": "true", "label": "Ping " + @user["name"]}}) %>
+</button></form>          </div>
+<% if @can_administer %>
+
+            <hr class="margin-block-start borderless">
+
+            <%- partial("users/profiles/transfer", {"transfer": @transfer}) %>
+<% end %>
+<% end %>
+<% if @can_administer && !@is_self %>
+
+          <div class="margin-block-start">
+            <%- partial("users/ban_button", {"user": @user}) %>
+          </div>
+<% end %>
+<% else %>
+        <div>
+          <h1 class="txt-x-large margin-none"><%= @user["name"] %></h1>
+          <div><%= @user["name"] %> is no longer on this account</div>
+        </div>
+<% end %>
+  </div>
+</section>

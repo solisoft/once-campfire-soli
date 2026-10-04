@@ -14,7 +14,7 @@ class RoomsController < ApplicationController
     at_message = req["params"]["at_message"]
     halt(404, "") if !at_message.nil? && !at_message.starts_with("@")
 
-    page = RoomPage.load(@_current_user_key, room_key, at_message.nil? ? nil : at_message.substring(1))
+    page = RoomPage.load(@_current_user_key, room_key, at_message.nil? ? nil : at_message.substring(1, at_message.length))
     if page.nil?
       @_flash("alert", "Room not found or inaccessible")
       return redirect("/")
@@ -34,11 +34,13 @@ class RoomsController < ApplicationController
     @join_url = base + "/join/" + req["account"]["join_code"]
     @join_qr_path = "/qr_code/" + Base64.urlsafe_encode(@join_url)
     account = req["account"]
+    agent = req["headers"]["user-agent"] ?? ""
+    @notification_help_html = NotificationHelp.cached_html(req, agent)
     sig = json_stringify([base, account["updated_at"], account["join_code"], @_current_user["updated_at"], @_current_user["role"],
-                          @room["name"], @room["type"], page["display_name"], page["invitation"]])
+                          @room["name"], @room["type"], page["display_name"], page["invitation"], Crypto.md5(agent)])
     @_render_cached_page("rooms/show", "room_show:" + @_current_user_key + ":" + @room["_key"], sig, {
       "messages": RoomPage.messages_html(page, base), "csrf": csrf_token(), "loaded_at": str(@room["updated_at"])
-    })
+    }, json_stringify([page["sig"], page["keys"]]))
   end
 
   # DELETE /rooms/:id

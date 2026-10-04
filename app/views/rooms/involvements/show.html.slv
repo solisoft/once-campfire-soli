@@ -1,0 +1,3 @@
+<turbo-frame data-controller="turbo-frame" data-action="notifications:ready@window-&gt;turbo-frame#load" data-turbo-frame-url-param="/rooms/<%= @room["_key"] %>/involvement" id="<%= room_dom_id(@room, "involvement") %>">
+  <%- button_to_change_involvement(@room, @involvement) %>
+</turbo-frame>

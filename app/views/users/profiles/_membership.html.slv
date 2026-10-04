@@ -1,0 +1,11 @@
+<li class="flex align-center gap margin-none min-width membership-item">
+  <a class="overflow-ellipsis fill-shade txt-primary txt-undecorated" href="/rooms/<%= membership["room"]["_key"] %>">
+    <strong><%= membership["display_name"] %></strong>
+</a>
+  <hr class="separator" aria-hidden="true">
+
+  <span class="txt-small">
+    <turbo-frame id="involvement_<%= membership["room"]["type"].downcase.replace("::", "_") %>_<%= membership["room"]["_key"] %>">
+      <%- button_to_change_involvement(membership["room"], membership["involvement"]) %>
+</turbo-frame>  </span>
+</li>

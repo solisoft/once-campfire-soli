@@ -17,7 +17,7 @@ class Sidebar
             LET members = r.type == "Rooms::Direct" ? (
               FOR o IN memberships FILTER o.room_id == r._key
                 FOR u IN users FILTER u._key == o.user_id
-                  SORT o.created_at, o._key
+                  SORT TO_NUMBER(u._key), u._key
                   RETURN {_key: u._key, name: u.name, updated_at: u.updated_at}
             ) : []
             SORT LOWER(r.name), r._key

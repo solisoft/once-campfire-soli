@@ -40,7 +40,7 @@ class RoomPage
       LET original = FIRST(FOR r IN rooms SORT r.created_at, r._key LIMIT 1 RETURN r._key)
       LET paged = original == #{rk} ? LENGTH(FOR m IN messages FILTER m.room_id == #{rk} LIMIT 41 RETURN 1) > #{size} : true
       LET members = room != null && room.type == "Rooms::Direct" ?
-        (FOR s IN memberships FILTER s.room_id == #{rk} FOR u IN users FILTER u._key == s.user_id SORT LOWER(u.name), u._key RETURN {_key: u._key, name: u.name}) : []
+        (FOR s IN memberships FILTER s.room_id == #{rk} FOR u IN users FILTER u._key == s.user_id SORT TO_NUMBER(u._key), u._key RETURN {_key: u._key, name: u.name}) : []
       LET fresh = LENGTH(stale) == 0
       RETURN {room: room, keys: page[*].k, stale: stale, sig: sig, same: fresh AND sig == #{known},
               html: fresh AND sig != #{known} ? CONCAT_SEPARATOR("\n", page[*].html) : null,

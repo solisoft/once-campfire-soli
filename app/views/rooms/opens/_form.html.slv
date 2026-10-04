@@ -1,0 +1,30 @@
+  <menu class="flex flex-column gap margin-none pad overflow-y constrain-height" data-controller="filter" data-filter-active-class="filter--active" data-filter-selected-class="selected">
+    <li class="flex align-center gap margin-none">
+      <figure class="avatar flex-item-no-shrink" style="--avatar-border-radius: 0; --avatar-size: 4ch;">
+        <%- image_tag("everyone.svg", {"aria": {"hidden": "true"}, "class": "colorize--black", "style": "background-color: transparent"}) %>
+        <span class="for-screen-reader">Everyone</span>
+      </figure>
+
+      <div class="min-width">
+        <div class="overflow-ellipsis fill-shade"><strong>Everyone</strong></div>
+      </div>
+
+      <hr class="separator" aria-hidden="true">
+
+<% if @can_administer %>
+        <a class="btn--faux flex-inline" tabindex="-1" data-turbo-action="replace" href="<%= @type_change_path %>">
+          <label for="room_type" class="switch">
+            <input type="checkbox" id="room_type" class="switch__input" checked="checked">
+            <span class="switch__btn round"></span>
+            <span class="for-screen-reader">Give only some access to this room</span>
+          </label>
+</a><% end %>    </li>
+
+    <hr class="separator full-width" style="--border-style: solid">
+
+<% if @users.length > 20 %>    <%- user_filter_search_tag() %>
+<% end %>
+    <div data-filter-target="list" contents>
+<% for user in @users %><%- partial("rooms/opens/user", {"user": user}) %><% end %>
+    </div>
+</menu>

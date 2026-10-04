@@ -46,7 +46,7 @@ class MessagePresenter
           room_names[rk] = room.nil? ? "" : Room.display_name(room, nil)
         end
         data = MessagePresenter.data(message, creator, boosts[message["_key"]] ?? [], room_names[rk], base_url)
-        html = render_partial("messages/message", {"m": data})
+        html = MessagePresenter.render(data)
       end
       Message.save_html(message["_key"], html, MessagePresenter.cache_key(message))
       results.push([message["_key"], html])
@@ -63,8 +63,9 @@ class MessagePresenter
       "created_at": message["created_at"], "updated_at": message["updated_at"],
       "room_name": room_name, "permalink_path": permalink, "permalink_url": base_url + permalink,
       "content_type": content_type, "attachment": message["attachment"],
-      "emoji": Emoji.all_emoji?(message["plain_text"]),
-      "boosts": boosts.map { |b| MessagePresenter.boost(b) }
+      "emoji_class": Emoji.all_emoji?(message["plain_text"]) ? "message--emoji" : "",
+      "created_iso": Clock.iso8601_z(message["created_at"]),
+      "boosts_html": boosts.map { |b| render_partial("messages/boosts/boost", {"boost": MessagePresenter.boost(b)}) }.join("")
     }
     if content_type == "attachment"
       a = message["attachment"]
@@ -75,11 +76,50 @@ class MessagePresenter
     data
   end
 
+  # messages/_message, rendered once per worker and kind with markers where each message's
+  # values go (escaped where the template escapes them), then filled in by string joins.
+  static ESCAPED: Array = ["client_message_id", "creator_id", "_key", "created_at", "updated_at", "created_iso",
+                           "creator_key", "creator_title", "creator_name", "creator_avatar", "permalink_path",
+                           "permalink_url", "room_name", "room_id", "blob_path", "download_path", "filename", "emoji_class"]
+  static RAW: Array = ["presentation_html", "boosts_html"]
+
+  static def render(data)
+    kind = data["content_type"] == "attachment" ? "attachment" : "text"
+    name = "message_template:" + kind
+    template = PageCache.get(name)
+    if template.nil?
+      marked = {"content_type": data["content_type"], "attachment": {"filename": "%%CF:filename%%"},
+                "creator": {"_key": "%%CF:creator_key%%", "title": "%%CF:creator_title%%", "name": "%%CF:creator_name%%",
+                            "avatar_path": "/%%CF:creator_avatar%%"}}
+      for field in MessagePresenter.ESCAPED + MessagePresenter.RAW
+        marked[field] = "%%CF:" + field + "%%" unless marked.has_key(field)
+      end
+      # --dev annotates partials with <!--solidev:…--> comments; they must not reach the cache.
+      # The avatar marker starts with "/" so image_tag takes it for a path, not an asset name.
+      template = Regex.replace_all("<!--solidev:[^>]*-->", render_partial("messages/message", {"m": marked}), "").split("%%CF:")
+      PageCache.set(name, template)
+    end
+    values = {
+      "creator_key": data["creator"]["_key"], "creator_title": data["creator"]["title"],
+      "creator_name": data["creator"]["name"], "creator_avatar": data["creator"]["avatar_path"].substring(1, data["creator"]["avatar_path"].length),
+      "filename": data["attachment"].nil? ? "" : data["attachment"]["filename"]
+    }
+    html = template[0]
+    for part in template.drop(1)
+      segments = part.split("%%")
+      field = segments[0]
+      value = values.has_key(field) ? values[field] : data[field]
+      html += MessagePresenter.RAW.include?(field) ? str(value ?? "") : html_escape(str(value ?? ""))
+      html += segments.drop(1).join("%%")
+    end
+    html
+  end
+
   # A message about to be stored: its author is at hand and it has no boosts yet.
   static def render_new(message, creator, room, base_url)
     room_name = Room.direct?(room) ? Room.display_name(room, nil) : room["name"]
     data = MessagePresenter.data(message, Present.user(creator), [], room_name, base_url)
-    render_partial("messages/message", {"m": data})
+    MessagePresenter.render(data)
   end
 
   static def boost(boost)
