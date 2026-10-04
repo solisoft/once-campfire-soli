@@ -1,7 +1,11 @@
 name = "campfire.solisoft.test"
 domain = "campfire.solisoft.test"
-start_script = "soli serve . --port $PORT --workers $WORKERS"
-workers = 2
+# Production mode even under the proxy's --dev: an explicit command (the proxy appends --dev
+# only to a start script it recognises as Soli's), eight workers, SoliDB's native driver.
+# --dev would inject the dev bar (~0.5 MB) into every page and frame and run one worker on
+# the tree-walking interpreter.
+start_script = "env SOLI_DB_DRIVER=1 soli serve . --port $PORT --workers $WORKERS"
+workers = 8
 stop_script = ""
 health_check = "/up"
 graceful_timeout = 30
