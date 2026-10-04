@@ -29,29 +29,29 @@ class User < Model
 
     k = str(key)
     rows = @sdbql{ FOR u IN users FILTER u._key == #{k} LIMIT 1 RETURN u }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def find_many(keys)
     return [] if keys.length == 0
 
     rows = @sdbql{ FOR u IN users FILTER u._key IN #{keys} RETURN u }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def active_ordered
     rows = @sdbql{ FOR u IN users FILTER u.status == "active" SORT LOWER(u.name), u._key RETURN u }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def active_without_bots_ordered
     rows = @sdbql{ FOR u IN users FILTER u.status == "active" AND u.role != "bot" SORT LOWER(u.name), u._key RETURN u }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def any?
     rows = @sdbql{ FOR u IN users LIMIT 1 RETURN 1 }
-    rows.is_a?("array") && rows.length > 0
+    Db.array(rows).length > 0
   end
 
   static def authenticate_by(email, password)
@@ -59,7 +59,7 @@ class User < Model
 
     e = User.normalize_email(email)
     rows = @sdbql{ FOR u IN users FILTER u.email_address == #{e} AND u.status == "active" LIMIT 1 RETURN u }
-    return nil unless rows.is_a?("array") && rows.length > 0
+    return nil unless Db.array(rows).length > 0
 
     user = rows[0]
     return nil if user["password_digest"].nil?
@@ -69,7 +69,7 @@ class User < Model
 
   static def first_administrator
     rows = @sdbql{ FOR u IN users FILTER u.role == "administrator" SORT u._key LIMIT 1 RETURN u }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def touch(key)

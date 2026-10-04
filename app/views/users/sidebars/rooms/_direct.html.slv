@@ -1,5 +1,5 @@
 <% members = membership["others"] %>
-  <a id="list_room_<%= membership["room"]["_key"] %>" class="direct<%= membership["unread_at"].nil? ? "" : " unread" %>" data-sorted-list-number="<%= membership["room"]["updated_at"] %>" data-rooms-list-target="room" data-room-id="<%= membership["room"]["_key"] %>" data-badge-dot-target="unread" data-sorted-list-target="item" href="/rooms/<%= membership["room"]["_key"] %>">
+  <a id="list_rooms_direct_<%= membership["room"]["_key"] %>" class="direct<%= membership["unread_at"].nil? ? "" : " unread" %>" data-sorted-list-number="<%= membership["room"]["updated_at"] %>" data-rooms-list-target="room" data-room-id="<%= membership["room"]["_key"] %>" data-badge-dot-target="unread" data-sorted-list-target="item" href="/rooms/<%= membership["room"]["_key"] %>">
 <% if members.length > 1 %>
       <div class="avatar__group">
 <% for member in members.take(4) %>

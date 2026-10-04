@@ -267,6 +267,21 @@ class RichText
     out + (paragraph ?? "")
   end
 
+  # Message::Mentionee: the users a body mentions.
+  static def mentioned_user_keys(body)
+    keys = []
+    for t in RichText.tokens(body ?? "")
+      next unless RichText.attachment_open?(t)
+
+      attrs = RichText.attributes(t)
+      next if (attrs["content-type"] ?? "").contains(RichText.OPENGRAPH_TYPE)
+
+      user = RichText.user_from_sgid(attrs["sgid"])
+      keys.push(user["_key"]) unless user.nil?
+    end
+    keys.uniq
+  end
+
   # --- plain text ------------------------------------------------------------------------
 
   # ActionText::Content#to_plain_text (mentions as "@Name", previews as nothing).

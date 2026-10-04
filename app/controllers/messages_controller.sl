@@ -2,10 +2,11 @@ class MessagesController < ApplicationController
   # GET /rooms/:room_id/messages — a page of messages, before or after one, or the last.
   def index
     @_set_room_scoped(req["params"]["room_id"])
-    messages = @_find_paged_messages
-    return @_head(204) if messages.length == 0
+    page = MessagePage.load(@room["_key"], params["before"], params["after"], RoomPage.base_url(req))
+    halt(404, "") if page.nil?
+    return @_head(204) if page["count"] == 0
 
-    {"status": 200, "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": MessagePresenter.join(messages, RoomPage.base_url(req))}
+    {"status": 200, "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": page["html"]}
   end
 
   # POST /rooms/:room_id/messages
@@ -16,11 +17,12 @@ class MessagesController < ApplicationController
     @room = found["room"]
     attrs = params["message"] ?? {}
     attachment = Attachments.create_message_attachment(find_uploaded_file(req, "message[attachment]"))
-    message = Message.create_message(@room, @_current_user_key, attrs["body"], attachment, attrs["client_message_id"])
-    html = MessagePresenter.join([message], RoomPage.base_url(req))
-    Broadcasts.message_created(@room, message, html)
+    created = Message.create_message(@room, @_current_user, attrs["body"], attachment, attrs["client_message_id"], RoomPage.base_url(req))
+    message = created["message"]
+    html = message["html"]
+    Broadcasts.message_created(@room, created["members"], html)
     Bots.deliver_webhooks(@room, message, @_current_user_key)
-    @_turbo_stream(TurboStream.append("messages_room_" + @room["_key"], html))
+    @_turbo_stream(TurboStream.append(Room.dom_id(@room, "messages"), html))
   end
 
   # GET /rooms/:room_id/messages/:id

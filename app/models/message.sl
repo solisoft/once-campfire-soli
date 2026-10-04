@@ -6,7 +6,7 @@ class Message < Model
 
     k = str(key)
     rows = @sdbql{ FOR m IN messages FILTER m._key == #{k} LIMIT 1 RETURN m }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def find_in_room(room_key, key)
@@ -15,7 +15,7 @@ class Message < Model
     k = str(key)
     rk = room_key
     rows = @sdbql{ FOR m IN messages FILTER m._key == #{k} AND m.room_id == #{rk} LIMIT 1 RETURN m }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # Messages by key, in the order given.
@@ -23,7 +23,7 @@ class Message < Model
     return [] if keys.length == 0
 
     rows = @sdbql{ FOR k IN #{keys} FOR m IN messages FILTER m._key == k RETURN m }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   # Current.user.reachable_messages.find
@@ -39,27 +39,51 @@ class Message < Model
         LIMIT 1
         RETURN m
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
-  # room.messages.create_with_attachment!, then Room#receive (after_create_commit).
-  static def create_message(room, creator_key, body_html, attachment, client_message_id)
+  # room.messages.create_with_attachment! with its after_create_commit (Room#receive) and the
+  # presentation it will be shown with, in one statement: the message goes in with its HTML,
+  # the room is touched, the members who aren't watching are marked unread. Returns the
+  # message and its members, each flagged when a push notification may be due.
+  static def create_message(room, creator, body_html, attachment, client_message_id, base_url)
     now = Clock.now
     plain = attachment.nil? ? RichText.plain_text(body_html) : ""
     plain = attachment["filename"] if plain.blank? && !attachment.nil?
     doc = {
-      "room_id": room["_key"], "creator_id": creator_key,
+      "room_id": room["_key"], "creator_id": creator["_key"],
       "client_message_id": client_message_id.blank? ? UUID.v4() : client_message_id,
       "body": attachment.nil? ? body_html : nil, "plain_text": plain ?? "",
       "search_text": Stemmer.index_text(plain ?? ""), "attachment": attachment,
-      "created_at": now, "updated_at": now, "html": nil, "html_key": nil
+      "created_at": now, "updated_at": now
     }
-    created = Ids.create(Message, doc)
-    message = Message.find_hash(created._key)
-    Room.touch(room["_key"], now)
-    Membership.mark_unread(room["_key"], creator_key, now)
-    PushMessageJob.perform_later({"room_id": room["_key"], "message_id": message["_key"]}) rescue nil
-    message
+    rk = room["_key"]
+    ck = creator["_key"]
+    cutoff = now - Membership.CONNECTION_TTL_MS
+    mentioned = attachment.nil? ? RichText.mentioned_user_keys(body_html) : []
+    rows = nil
+    for attempt in 0..5
+      doc["_key"] = Ids.generate
+      doc["html"] = MessagePresenter.render_new(doc, creator, room, base_url)
+      doc["html_key"] = MessagePresenter.cache_key(doc)
+      rows = @sdbql{
+        INSERT #{doc} INTO messages
+        FOR r IN rooms FILTER r._key == #{rk}
+          UPDATE r WITH {updated_at: #{now}} IN rooms
+          FOR m IN memberships FILTER m.room_id == #{rk}
+            LET unread = m.user_id != #{ck} AND m.involvement != "invisible" AND (m.connected_at == null OR m.connected_at < #{cutoff})
+            UPDATE m WITH (unread ? {unread_at: #{now}, updated_at: #{now}} : {}) IN memberships
+            LET subscribed = LENGTH(FOR p IN push_subscriptions FILTER p.user_id == m.user_id LIMIT 1 RETURN 1) > 0
+            RETURN {user: m.user_id, push: unread AND subscribed AND (m.involvement == "everything" OR (m.involvement == "mentions" AND m.user_id IN #{mentioned}))}
+      }
+      break if rows.is_a?("array")
+    end
+    members = Db.array(rows)
+    pushes = members.filter { |m| m["push"] }
+    if pushes.length > 0
+      PushQueue.enqueue({"room_id": rk, "message_id": doc["_key"], "user_ids": pushes.map { |m| m["user"] }})
+    end
+    {"message": doc, "members": members.map { |m| m["user"] }}
   end
 
   static def update_body(message, body_html)
@@ -90,7 +114,7 @@ class Message < Model
   static def destroy_all_in_room(room_key)
     rk = room_key
     rows = @sdbql{ FOR m IN messages FILTER m.room_id == #{rk} AND m.attachment != null RETURN m.attachment }
-    for a in (rows.is_a?("array") ? rows : [])
+    for a in (Db.array(rows))
       Attachments.delete_for(a)
     end
     @sdbql{
@@ -116,7 +140,7 @@ class Message < Model
         LIMIT #{size}
         RETURN m
     }
-    rows.is_a?("array") ? rows.reverse : []
+    Db.array(rows).reverse
   end
 
   static def page_before(room_key, message, size = 40)
@@ -128,7 +152,7 @@ class Message < Model
         LIMIT #{size}
         RETURN m
     }
-    rows.is_a?("array") ? rows.reverse : []
+    Db.array(rows).reverse
   end
 
   static def page_after(room_key, message, size = 40)
@@ -140,7 +164,7 @@ class Message < Model
         LIMIT #{size}
         RETURN m
     }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def page_around(room_key, message)
@@ -155,7 +179,7 @@ class Message < Model
         LIMIT 40
         RETURN m
     }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def page_updated_since(room_key, since, excluded_keys)
@@ -166,33 +190,33 @@ class Message < Model
         LIMIT 40
         RETURN m
     }
-    rows.is_a?("array") ? rows.reverse : []
+    Db.array(rows).reverse
   end
 
   static def count_in_room(room_key)
     rk = room_key
     rows = @sdbql{ RETURN LENGTH(FOR m IN messages FILTER m.room_id == #{rk} RETURN 1) }
-    rows.is_a?("array") ? rows[0] : 0
+    Db.array(rows).length > 0 ? rows[0] : 0
   end
 
   static def paged?(room_key)
     rk = room_key
     rows = @sdbql{ RETURN LENGTH(FOR m IN messages FILTER m.room_id == #{rk} LIMIT 41 RETURN 1) }
-    rows.is_a?("array") && rows[0] > Message.PAGE_SIZE
+    Db.array(rows).length > 0 && rows[0] > Message.PAGE_SIZE
   end
 
   static def exists_before?(room_key, message)
     rk = room_key
     t = message["created_at"]
     rows = @sdbql{ RETURN LENGTH(FOR m IN messages FILTER m.room_id == #{rk} AND m.created_at < #{t} LIMIT 1 RETURN 1) }
-    rows.is_a?("array") && rows[0] > 0
+    Db.array(rows).length > 0 && rows[0] > 0
   end
 
   static def exists_after?(room_key, message)
     rk = room_key
     t = message["created_at"]
     rows = @sdbql{ RETURN LENGTH(FOR m IN messages FILTER m.room_id == #{rk} AND m.created_at > #{t} LIMIT 1 RETURN 1) }
-    rows.is_a?("array") && rows[0] > 0
+    Db.array(rows).length > 0 && rows[0] > 0
   end
 
   # --- Message::Searchable ----------------------------------------------------------------
@@ -216,7 +240,7 @@ class Message < Model
         LIMIT #{size}
         RETURN m
     }
-    rows.is_a?("array") ? rows.reverse : []
+    Db.array(rows).reverse
   end
 
   # --- presentation ---------------------------------------------------------------------

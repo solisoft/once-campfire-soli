@@ -1,0 +1,5 @@
+room_show      rep 1:    4734.7 req/s  p50 3.339 ms  p99 4.279 ms  statuses {'200': 18954}  invalid 0
+messages_page  rep 1:    4856.1 req/s  p50 3.251 ms  p99 4.259 ms  statuses {'200': 19439}  invalid 0
+sidebar        rep 1:    8381.9 req/s  p50 1.897 ms  p99 2.509 ms  statuses {'200': 33544}  invalid 0
+search         rep 1:    6131.6 req/s  p50 2.569 ms  p99 3.339 ms  statuses {'200': 24542}  invalid 0
+post_message   rep 1:    1268.8 req/s  p50 12.279 ms  p99 18.479 ms  statuses {'200': 5092}  invalid 0

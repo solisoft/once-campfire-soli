@@ -111,3 +111,6 @@
 # `enable_security_headers` / `disable_security_headers` toggle the
 # whole bundle.
 
+
+# Push notifications queued in SoliKV by new messages (see PushQueue).
+Cron.schedule("push_delivery", "*/2 * * * * *", "PushDeliveryJob", {})

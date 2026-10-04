@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Measure the five HTTP workloads of the reference README the way its Elixir harness
+# (bench/compare in once-campfire-elixir) does: signed in as david, keep-alive clients,
+# every response checked for 200 and a body.
+#
+#   bench/run --seed SEED_DIR --loadgen PATH [--cpus 8-11] [--client-cpus 12-15]
+#             [--workers 4] [--secs 4] [--conc 16] [--reps 2] [--out bench/results/NAME]
+#             [--only "room_show sidebar …"]
+#
+# The application gets the server CPUs and so does its database: SoliDB runs on the same
+# four hardware threads, in a fresh instance on its own port and data directory, because the
+# other ports' SQLite runs inside their process; so does a fresh SoliKV (Redis's role). SEED_DIR is the Rust port's parity seed
+# (parity/bin/seed build default); LOADGEN is once-campfire-elixir's bench/loadgen binary.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+ONLY="room_show messages_page sidebar search post_message" SEED="" LOADGEN="" CPUS=8-11 CLIENT_CPUS=12-15 WORKERS=4 SECS=4 CONC=16 REPS=2
+OUT="$ROOT/bench/results/$(date +%Y%m%d-%H%M%S)"
+DB_PORT=6799 KV_PORT=6899 APP_PORT=5299
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --seed) SEED=$2; shift 2 ;;
+    --loadgen) LOADGEN=$2; shift 2 ;;
+    --cpus) CPUS=$2; shift 2 ;;
+    --client-cpus) CLIENT_CPUS=$2; shift 2 ;;
+    --workers) WORKERS=$2; shift 2 ;;
+    --secs) SECS=$2; shift 2 ;;
+    --conc) CONC=$2; shift 2 ;;
+    --reps) REPS=$2; shift 2 ;;
+    --out) OUT=$2; shift 2 ;;
+    --only) ONLY=$2; shift 2 ;;
+    *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 1 ;;
+  esac
+done
+[ -n "$SEED" ] && [ -n "$LOADGEN" ] || { echo "bench/run: --seed and --loadgen are required" >&2; exit 1; }
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/campfire-bench.XXXXXX")
+mkdir -p "$OUT"
+cleanup() {
+  [ -n "${APP_PID:-}" ] && kill "$APP_PID" 2>/dev/null || true
+  [ -n "${DB_PID:-}" ] && kill "$DB_PID" 2>/dev/null || true
+  [ -n "${KV_PID:-}" ] && kill "$KV_PID" 2>/dev/null || true
+  wait 2>/dev/null || true
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
+
+lg() { taskset -c "$CLIENT_CPUS" "$LOADGEN" "$@"; }
+# CPU seconds (user + system) a process and its threads have used.
+cpu() { awk '{ printf "%.3f", ($14 + $15) / 100 }' "/proc/$1/stat"; }
+
+echo "bench: SoliDB on CPUs $CPUS, port $DB_PORT" >&2
+# From its own directory: solidb reads a .env in its working directory, and the app's
+# SOLIDB_HOST (a URL) would become its bind address.
+(cd "$WORK" && exec taskset -c "$CPUS" solidb --host 127.0.0.1 --port "$DB_PORT" --data-dir "$WORK/solidb" > "$WORK/solidb.log" 2>&1) &
+DB_PID=$!
+for _ in $(seq 600); do [ -f "$WORK/solidb/.admin_password" ] && curl -s -o /dev/null "localhost:$DB_PORT/_api/health" && break; sleep 0.1; done
+[ -f "$WORK/solidb/.admin_password" ] || { cat "$WORK/solidb.log" >&2; exit 1; }
+
+export SOLIDB_HOST="http://localhost:$DB_PORT" SOLIDB_DATABASE=campfire_bench SOLIDB_USERNAME=admin
+SOLIDB_PASSWORD=$(cat "$WORK/solidb/.admin_password")
+export SOLIDB_PASSWORD
+curl -s -o /dev/null -u "admin:$SOLIDB_PASSWORD" -H 'Content-Type: application/json' -X POST \
+  "localhost:$DB_PORT/_api/database" -d '{"name":"campfire_bench"}'
+
+echo "bench: SoliKV on CPUs $CPUS, port $KV_PORT" >&2
+(cd "$WORK" && exec taskset -c "$CPUS" solikv --bind 127.0.0.1 --port "$KV_PORT" --rest-port 0 --dir "$WORK/solikv" > "$WORK/solikv.log" 2>&1) &
+KV_PID=$!
+export SOLIKV_RESP_HOST=127.0.0.1 SOLIKV_RESP_PORT=$KV_PORT
+
+cd "$ROOT"
+soli db:migrate up > "$WORK/migrate.log" 2>&1
+bin/import-seed "$SEED" --database campfire_bench > "$WORK/import.log"
+soli db:seed . db/seeds/after_import.sl > "$WORK/after_import.log" 2>&1
+
+echo "bench: Soli on CPUs $CPUS, $WORKERS workers, port $APP_PORT" >&2
+taskset -c "$CPUS" soli serve . --port "$APP_PORT" --strict-port --workers "$WORKERS" > "$WORK/app.log" 2>&1 &
+APP_PID=$!
+for _ in $(seq 300); do curl -s -o /dev/null "localhost:$APP_PORT/up" && break; sleep 0.1; done
+
+APP_SERVER_PID=$(fuser "$APP_PORT/tcp" 2>/dev/null | awk '{print $1}')
+DB_SERVER_PID=$(fuser "$DB_PORT/tcp" 2>/dev/null | awk '{print $1}')
+KV_SERVER_PID=$(fuser "$KV_PORT/tcp" 2>/dev/null | awk '{print $1}')
+BASE="http://127.0.0.1:$APP_PORT"
+labels() { python3 -c "import json,sys; print(json.load(open('$SEED/labels.json'))['$1'])"; }
+COOKIE=$(lg login --base "$BASE" --email "$(labels emails.david)" --password "$(labels passwords.all)" |
+  python3 -c "import json,sys; print(json.load(sys.stdin)['cookie'])")
+ROOM=$(labels rooms.watercooler)
+SCRAPE=$(lg scrape --base "$BASE" --cookie "$COOKIE" --room "$ROOM")
+CSRF=$(echo "$SCRAPE" | python3 -c "import json,sys; print(json.load(sys.stdin)['csrf'] or '')")
+
+declare -A ROUTES=(
+  [room_show]="--path /rooms/$ROOM"
+  [messages_page]="--path /rooms/$ROOM/messages?before=$(labels messages.busy_060)"
+  [sidebar]="--path /users/me/sidebar"
+  [search]="--path /searches?q=coffee"
+  [post_message]="--post-room $(labels rooms.hq) --csrf $CSRF"
+)
+{
+  echo "date: $(date -Iseconds)"
+  echo "host: $(uname -r), $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //'), $(nproc) threads"
+  echo "server cpus: $CPUS (app and SoliDB); loadgen cpus: $CLIENT_CPUS; workers: $WORKERS"
+  echo "soli: $(soli --version 2>&1 | head -1); solidb: $(readlink -f "$(command -v solidb)")"
+  echo "seed: $(sha256sum "$SEED/db/production.sqlite3" | cut -d' ' -f1)"
+  echo "app: $(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo ' (dirty)')"
+  echo "workload: secs=$SECS conc=$CONC reps=$REPS"
+} > "$OUT/env.txt"
+
+for rep in $(seq "$REPS"); do
+  for name in $ONLY; do
+    # shellcheck disable=SC2086
+    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc 1 --duration 1 > /dev/null
+    app0=$(cpu "$APP_SERVER_PID") db0=$(cpu "$DB_SERVER_PID") kv0=$(cpu "$KV_SERVER_PID")
+    # shellcheck disable=SC2086
+    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc "$CONC" --duration "$SECS" > "$OUT/$name-$rep.json"
+    app1=$(cpu "$APP_SERVER_PID") db1=$(cpu "$DB_SERVER_PID") kv1=$(cpu "$KV_SERVER_PID")
+    python3 - "$OUT/$name-$rep.json" "$name" "$rep" "$app0" "$app1" "$db0" "$db1" "$kv0" "$kv1" <<'EOF'
+import json, sys
+path, name, rep, app0, app1, db0, db1, kv0, kv1 = sys.argv[1:]
+r = json.load(open(path))
+lat = r.get("latency", {})
+n = max(lat.get("n", 0), 1)
+app_us = (float(app1) - float(app0)) * 1e6 / n
+db_us = (float(db1) - float(db0)) * 1e6 / n
+kv_us = (float(kv1) - float(kv0)) * 1e6 / n
+r["cpu_us_per_request"] = {"app": round(app_us, 1), "solidb": round(db_us, 1), "solikv": round(kv_us, 1)}
+json.dump(r, open(path, "w"), indent=2)
+print(f"{name:14} rep {rep}: {r.get('rps', 0):>9.1f} req/s  p50 {lat.get('p50_ms', 0):>6} ms  p99 {lat.get('p99_ms', 0):>6} ms  "
+      f"CPU/req app {app_us:6.0f} µs + solidb {db_us:5.0f} µs + solikv {kv_us:4.0f} µs  statuses {r.get('statuses')}  invalid {r.get('invalid_responses', 0)}")
+EOF
+  done
+done | tee "$OUT/summary.txt"
+cp "$WORK/app.log" "$OUT/app.log"
+echo "bench: results in ${OUT#"$ROOT"/}" >&2

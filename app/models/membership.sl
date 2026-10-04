@@ -45,7 +45,7 @@ class Membership < Model
   static def find_hash(key)
     k = key
     rows = @sdbql{ FOR m IN memberships FILTER m._key == #{k} LIMIT 1 RETURN m }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def find_for(user_key, room_key)
@@ -54,7 +54,7 @@ class Membership < Model
     uk = user_key
     rk = str(room_key)
     rows = @sdbql{ FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == #{uk} LIMIT 1 RETURN m }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # The membership and its room in one round trip (RoomScoped#set_room).
@@ -69,7 +69,7 @@ class Membership < Model
           LIMIT 1
           RETURN {membership: m, room: r}
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def set_involvement(membership, involvement)
@@ -153,6 +153,6 @@ class Membership < Model
             RETURN MERGE(m, {room: r})
       }
     end
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 end

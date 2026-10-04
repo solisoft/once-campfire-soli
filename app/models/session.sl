@@ -20,7 +20,7 @@ class Session < Model
           LIMIT 1
           RETURN {session: s, user: u}
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # The account, and the session and its user when the token names one: every request's
@@ -33,7 +33,7 @@ class Session < Model
       LET user = session == null ? null : FIRST(FOR u IN users FILTER u._key == session.user_id RETURN u)
       RETURN {account: account, session: session, user: user}
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : {"account": nil, "session": nil, "user": nil}
+    Db.array(rows).length > 0 ? rows[0] : {"account": nil, "session": nil, "user": nil}
   end
 
   static def resume(session, user_agent, ip_address)
@@ -60,6 +60,6 @@ class Session < Model
   static def ip_addresses_for_user(user_key)
     uk = user_key
     rows = @sdbql{ FOR s IN sessions FILTER s.user_id == #{uk} AND s.ip_address != null AND s.ip_address != "" RETURN DISTINCT s.ip_address }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 end

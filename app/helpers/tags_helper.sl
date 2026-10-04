@@ -95,7 +95,17 @@ end
 # shared cached fragments must not carry one session's token.
 def button_to(url, options, inner_html)
   method = options["method"] ?? "post"
-  form_attrs = {"class": options["form_class"] ?? "button_to", "method": "post", "action": url}
+  action = url
+  unless options["params"].nil?
+    query = []
+    options["params"].each do |name, value|
+      for v in (value.is_a?("array") ? value : [value])
+        query.push(url_encode(name) + "=" + url_encode(str(v)))
+      end
+    end
+    action = url + "?" + query.join("&")
+  end
+  form_attrs = {"class": options["form_class"] ?? "button_to", "method": "post", "action": action}
   form_attrs["data"] = options["form_data"] unless options["form_data"].nil?
   button_attrs = {}
   options.each do |k, v|
@@ -103,16 +113,7 @@ def button_to(url, options, inner_html)
   end
   button_attrs["type"] = "submit"
   hidden = method == "post" ? "" : method_hidden_field(method)
-  params_html = ""
-  unless options["params"].nil?
-    options["params"].each do |name, value|
-      for v in (value.is_a?("array") ? value : [value])
-        params_html += "<input type=\"hidden\" name=\"" + html_escape(name) + "\" value=\"" + html_escape(str(v)) + "\" autocomplete=\"off\" />"
-      end
-    end
-  end
-  "<form" + tag_attributes(form_attrs) + ">" + hidden + "<button" + tag_attributes(button_attrs) + ">" + inner_html +
-    "</button>" + params_html + "</form>"
+  "<form" + tag_attributes(form_attrs) + ">" + hidden + "<button" + tag_attributes(button_attrs) + ">" + inner_html + "</button></form>"
 end
 
 def link_back_to(destination)

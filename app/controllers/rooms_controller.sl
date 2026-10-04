@@ -51,7 +51,7 @@ class RoomsController < ApplicationController
 
     @_ensure_can_administer(room)
     Room.destroy_room(room)
-    Cable.broadcast_stream("rooms", TurboStream.remove("list_room_" + room["_key"]))
+    Cable.broadcast_stream("rooms", TurboStream.remove(Room.dom_id(room, "list")))
     redirect("/")
   end
 end

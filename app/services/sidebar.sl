@@ -3,7 +3,11 @@
 class Sidebar
   static DIRECT_PLACEHOLDERS: Int = 20
 
-  static def load(user_key)
+  # known: the signature of the data the caller already rendered; when it still holds, the
+  # rows don't come back ("same": true).
+  # Placeholders are SLICEd rather than LIMITed: a LIMIT taken from a variable comes back
+  # empty on a collection scan (solidb, 2026-10).
+  static def load(user_key, known = "")
     uk = user_key
     limit = Sidebar.DIRECT_PLACEHOLDERS
     rows = @sdbql{
@@ -28,15 +32,15 @@ class Sidebar
       )
       LET excluded = UNION_DISTINCT(in_directs, [#{uk}])
       LET placeholder_limit = MAX([#{limit} - LENGTH(excluded), 0])
-      LET placeholders = (
+      LET placeholders = SLICE((
         FOR u IN users FILTER u.status == "active" AND u._key NOT IN excluded
           SORT u.created_at, u._key
-          LIMIT placeholder_limit
           RETURN u
-      )
-      RETURN {memberships: memberships, placeholders: placeholders}
+      ), 0, placeholder_limit)
+      LET sig = MD5(TO_STRING([memberships, placeholders]))
+      RETURN sig == #{known} ? {same: true, sig: sig} : {same: false, sig: sig, memberships: memberships, placeholders: placeholders}
     }
-    return {"memberships": [], "placeholders": []} unless rows.is_a?("array") && rows.length > 0
+    return {"same": false, "sig": "", "memberships": [], "placeholders": []} unless Db.array(rows).length > 0
 
     rows[0]
   end

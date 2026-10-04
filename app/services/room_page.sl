@@ -46,7 +46,7 @@ class RoomPage
               html: fresh AND sig != #{known} ? CONCAT_SEPARATOR("\n", page[*].html) : null,
               invitation: original == #{rk} AND !paged, members: members}
     }
-    return nil unless rows.is_a?("array") && rows.length > 0 && !rows[0]["room"].nil?
+    return nil unless Db.array(rows).length > 0 && !rows[0]["room"].nil?
 
     page = rows[0]
     if page["same"]

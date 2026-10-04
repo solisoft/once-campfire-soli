@@ -1,8 +1,15 @@
 class UsersSidebarsController < ApplicationController
   # GET /users/me/sidebar
   def show
-    data = Sidebar.load(@_current_user_key)
     me = @_current_user_key
+    name = "sidebar:" + me
+    can_create = User.administrator?(@_current_user) || !Account.restrict_room_creation?(req["account"])
+    context = json_stringify([@_current_user["updated_at"], can_create])
+    cached = PageCache.get(name)
+    known = cached.nil? || cached["context"] != context ? "" : cached["sig"]
+    data = Sidebar.load(me, known)
+    return {"status": 200, "headers": cached["headers"], "body": cached["body"]} if data["same"]
+
     directs = []
     others = []
     for m in data["memberships"]
@@ -18,9 +25,11 @@ class UsersSidebarsController < ApplicationController
     @other_memberships = others
     @direct_placeholder_users = Present.users(data["placeholders"])
     @current_user = Present.user(@_current_user)
-    @can_create_rooms = User.administrator?(@_current_user) || !Account.restrict_room_creation?(req["account"])
+    @can_create_rooms = can_create
     @rooms_stream = Cable.signed_stream_name("rooms")
     @user_rooms_stream = Cable.signed_stream_name("user:" + me + ":rooms")
-    render("users/sidebars/show", {}, {"layout": false})
+    response = render("users/sidebars/show", {}, {"layout": false})
+    PageCache.set(name, {"sig": data["sig"], "context": context, "headers": response["headers"], "body": response["body"]})
+    response
   end
 end

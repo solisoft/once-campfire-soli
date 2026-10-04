@@ -6,7 +6,7 @@ class Webhook < Model
 
     uk = user_key
     rows = @sdbql{ FOR w IN webhooks FILTER w.user_id == #{uk} LIMIT 1 RETURN w }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # User::Bot#update_webhook_url!

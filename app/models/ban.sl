@@ -4,7 +4,7 @@ class Ban < Model
 
     ip = ip_address
     rows = @sdbql{ RETURN LENGTH(FOR b IN bans FILTER b.ip_address == #{ip} LIMIT 1 RETURN 1) }
-    rows.is_a?("array") && rows[0] > 0
+    Db.array(rows).length > 0 && rows[0] > 0
   end
 
   # Ban#ip_address_is_public: loopback, private and link-local addresses are refused.

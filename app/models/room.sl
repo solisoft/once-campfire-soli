@@ -10,7 +10,7 @@ class Room < Model
 
     k = str(key)
     rows = @sdbql{ FOR r IN rooms FILTER r._key == #{k} LIMIT 1 RETURN r }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def open?(room)
@@ -23,6 +23,12 @@ class Room < Model
 
   static def direct?(room)
     room["type"] == Room.DIRECT
+  end
+
+  # dom_id(room): "rooms_open_1", "rooms_closed_1", "rooms_direct_1"
+  static def dom_id(room, prefix = nil)
+    id = room["type"].downcase.replace("::", "_") + "_" + room["_key"]
+    prefix.nil? ? id : prefix + "_" + id
   end
 
   static def default_involvement(room)
@@ -42,12 +48,12 @@ class Room < Model
   # Room.original: the first room ever created.
   static def original
     rows = @sdbql{ FOR r IN rooms SORT r.created_at, r._key LIMIT 1 RETURN r }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def original_key
     rows = @sdbql{ FOR r IN rooms SORT r.created_at, r._key LIMIT 1 RETURN r._key }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # Current.user.rooms.original
@@ -60,7 +66,7 @@ class Room < Model
           LIMIT 1
           RETURN r
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # Current.user.rooms.last (RoomsController#index)
@@ -73,7 +79,7 @@ class Room < Model
           LIMIT 1
           RETURN r
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def touch(key, now = nil)
@@ -84,7 +90,7 @@ class Room < Model
 
   static def open_room_keys
     rows = @sdbql{ FOR r IN rooms FILTER r.type == "Rooms::Open" RETURN r._key }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   # Becoming an open room grants everyone access (Rooms::Open after_save_commit).
@@ -119,13 +125,13 @@ class Room < Model
           SORT LOWER(u.name), u._key
           RETURN u
     }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def user_keys(room_key)
     k = room_key
     rows = @sdbql{ FOR m IN memberships FILTER m.room_id == #{k} RETURN m.user_id }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   # Rooms::Direct.find_or_create_for: the direct room whose members are exactly these users.
@@ -141,7 +147,7 @@ class Room < Model
           LIMIT 1
           RETURN r
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # RoomsHelper#room_display_name

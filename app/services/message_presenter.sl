@@ -75,6 +75,13 @@ class MessagePresenter
     data
   end
 
+  # A message about to be stored: its author is at hand and it has no boosts yet.
+  static def render_new(message, creator, room, base_url)
+    room_name = Room.direct?(room) ? Room.display_name(room, nil) : room["name"]
+    data = MessagePresenter.data(message, Present.user(creator), [], room_name, base_url)
+    render_partial("messages/message", {"m": data})
+  end
+
   static def boost(boost)
     boost["booster"] = Present.user(boost["booster"]) unless boost["booster"].nil?
     boost["booster"] = {"_key": boost["booster_id"], "name": "", "title": "", "avatar_path": ""} if boost["booster"].nil?

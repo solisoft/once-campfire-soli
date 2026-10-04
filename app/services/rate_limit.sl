@@ -1,10 +1,11 @@
-# ActionController::RateLimiting in a fixed window, counted in SoliKV when it is up.
+# ActionController::RateLimiting in a fixed window, counted in SoliKV.
 class RateLimit
   static def allow?(key, limit, within_seconds)
-    count = Cache.increment("rate_limit:" + key) rescue nil
+    name = "campfire:rate_limit:" + key
+    count = KV.incr(name) rescue nil
     return true if count.nil?
 
-    Cache.expire("rate_limit:" + key, within_seconds) rescue nil if count == 1
+    KV.expire(name, within_seconds) rescue nil if count == 1
     count <= limit
   end
 end

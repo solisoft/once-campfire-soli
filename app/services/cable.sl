@@ -5,8 +5,8 @@
 # must echo. Broadcasting rebuilds the identifier the frontend's JSON.stringify produces
 # for that stream's subscribers, so a broadcast is one channel fan-out.
 #
-# Presence subscriptions are remembered per connection in SoliKV, so a closed socket marks
-# its rooms absent as PresenceChannel#unsubscribed would.
+# Presence subscriptions are remembered per connection in a SoliKV set, so a closed socket
+# marks its rooms absent as PresenceChannel#unsubscribed would.
 class Cable
   static GUARDED_SUFFIX: String = ":messages"
 
@@ -109,15 +109,13 @@ class Cable
   end
 
   static def disconnect(event)
-    key = "cable:presence:" + event["connection_id"]
-    raw = Cache.get(key) rescue nil
-    return {} if raw.blank?
-
-    for membership_key in (JSON.parse(raw) rescue [])
+    key = "campfire:cable:presence:" + event["connection_id"]
+    keys = KV.smembers(key) rescue []
+    for membership_key in (keys ?? [])
       membership = Membership.find_hash(membership_key)
       Membership.disconnected(membership) unless membership.nil?
     end
-    Cache.delete(key) rescue nil
+    KV.delete(key) rescue nil
     {}
   end
 
@@ -216,11 +214,13 @@ class Cable
   end
 
   static def remember_presence(connection_id, membership_key, present)
-    key = "cable:presence:" + connection_id
-    raw = Cache.get(key) rescue nil
-    keys = raw.blank? ? [] : (JSON.parse(raw) rescue [])
-    keys = present ? (keys + [membership_key]).uniq : keys.filter { |k| k != membership_key }
-    Cache.set(key, json_stringify(keys), 86400) rescue nil
+    key = "campfire:cable:presence:" + connection_id
+    if present
+      KV.sadd(key, membership_key) rescue nil
+      KV.expire(key, 86400) rescue nil
+    else
+      KV.srem(key, membership_key) rescue nil
+    end
   end
 
   # Rails ids are integers in JSON; ours are integer-valued keys.

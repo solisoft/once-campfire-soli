@@ -4,7 +4,7 @@ class Account < Model
 
   static def current
     rows = @sdbql{ FOR a IN accounts FILTER a._key == "campfire" RETURN a }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def exists?

@@ -21,7 +21,7 @@ class Search < Model
   static def recent_for(user_key)
     uk = user_key
     rows = @sdbql{ FOR s IN searches FILTER s.user_id == #{uk} SORT s.updated_at DESC, s._key DESC RETURN s }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def clear_for(user_key)

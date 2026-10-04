@@ -4,7 +4,7 @@ class Boost < Model
 
     k = str(key)
     rows = @sdbql{ FOR b IN boosts FILTER b._key == #{k} LIMIT 1 RETURN b }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def create_boost(message, booster_key, content)
@@ -32,7 +32,7 @@ class Boost < Model
         RETURN MERGE(b, {booster: booster})
     }
     grouped_boosts = {}
-    for b in (rows.is_a?("array") ? rows : [])
+    for b in (Db.array(rows))
       grouped_boosts[b["message_id"]] = (grouped_boosts[b["message_id"]] ?? []) + [b]
     end
     grouped_boosts

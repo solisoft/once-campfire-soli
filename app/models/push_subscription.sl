@@ -7,14 +7,14 @@ class PushSubscription < Model
   static def for_user(user_key)
     uk = user_key
     rows = @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} SORT p.created_at, p._key RETURN p }
-    rows.is_a?("array") ? rows : []
+    Db.array(rows)
   end
 
   static def find_for_user(user_key, key)
     uk = user_key
     k = str(key)
     rows = @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} AND p._key == #{k} LIMIT 1 RETURN p }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   static def find_matching(user_key, endpoint, p256dh, auth)
@@ -25,7 +25,7 @@ class PushSubscription < Model
         LIMIT 1
         RETURN p
     }
-    rows.is_a?("array") && rows.length > 0 ? rows[0] : nil
+    Db.first(rows)
   end
 
   # Push::Subscription#validate_endpoint_url: https, port 443, a known push service.

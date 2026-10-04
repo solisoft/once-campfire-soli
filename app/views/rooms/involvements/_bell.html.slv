@@ -1,7 +1,7 @@
 <span>
   <span class="button_to_change_notifying"
       data-controller="notifications" data-notifications-subscriptions-url-value="/users/me/push_subscriptions" data-notifications-attention-class="btn--pulsing">
-    <turbo-frame id="involvement_room_<%= room["_key"] %>" data-controller="turbo-frame" data-action="notifications:ready@window->turbo-frame#load" data-turbo-frame-url-param="/rooms/<%= room["_key"] %>/involvement">
+    <turbo-frame id="involvement_<%= room["type"].downcase.replace("::", "_") %>_<%= room["_key"] %>" data-controller="turbo-frame" data-action="notifications:ready@window->turbo-frame#load" data-turbo-frame-url-param="/rooms/<%= room["_key"] %>/involvement">
       <button class="btn" data-action="click->notifications#attemptToSubscribe" data-notifications-target="bell">
         <%- image_tag("notification-bell-loading.svg", {"size": 20, "aria": {"hidden": "true"}}) %>
         <%- image_tag("notification-bell-alert.svg", {"size": 20, "aria": {"hidden": "true"}, "hidden": true}) %>

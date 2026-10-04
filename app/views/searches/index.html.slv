@@ -26,7 +26,7 @@
   </div>
 
   <div id="search-results" class="messages searches__results" data-controller="search-results" data-search-results-target="messages" data-search-results-me-class="message--me" data-search-results-threaded-class="message--threaded" data-search-results-mentioned-class="message--mentioned" data-search-results-formatted-class="message--formatted">
-<%- @messages_html %>
+<%- @marks["messages"] %>
 </div></div>
 
 <% content_for "footer" do %>
@@ -35,7 +35,7 @@
       <%- image_tag("arrow-left.svg", {"aria": {"hidden": "true"}}) %>
       <span class="for-screen-reader">Exit search </span>
 </a>
-    <form class="margin-block flex-item-grow contain flex align-center gap" data-controller="form" data-action="keydown.esc->form#cancel" action="/searches" accept-charset="UTF-8" method="post"><%- csrf_hidden_field() %>
+    <form class="margin-block flex-item-grow contain flex align-center gap" data-controller="form" data-action="keydown.esc->form#cancel" action="/searches" accept-charset="UTF-8" method="post"><input type="hidden" name="_csrf_token" value="<%= @csrf %>" autocomplete="off" />
       <div class="composer__input flex align-center flex-item-grow gap full-width input input--actor min-width">
         <%- image_tag("search.svg", {"size": 20, "aria": {"hidden": "true"}, "class": "composer__input-hint colorize--black", "style": "view-transition-name: input-btn;"}) %>
 
