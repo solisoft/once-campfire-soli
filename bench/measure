@@ -53,6 +53,21 @@ declare -A ROUTES=(
   [post_message]="--post-room $(labels rooms.hq) --csrf $CSRF"
 )
 
+# Memory of the --pids processes (kB), one line per sample: VmRSS / RssAnon / Pss.
+memory() {
+  for entry in $PIDS; do
+    pid=${entry#*:}
+    rss_anon=$(awk '/^VmRSS:/ { r = $2 } /^RssAnon:/ { a = $2 } END { printf "%d/%d", r, a }' "/proc/$pid/status")
+    pss=$(awk '/^Pss:/ { print $2 }' "/proc/$pid/smaps_rollup")
+    printf "%s=%s/%s " "${entry%%:*}" "$rss_anon" "$pss"
+  done
+  echo
+}
+memory > "$OUT/memory-idle.txt"
+( while true; do memory; sleep 0.1; done ) > "$OUT/memory-samples.txt" &
+SAMPLER=$!
+trap 'kill $SAMPLER 2>/dev/null || true' EXIT
+
 for rep in $(seq "$REPS"); do
   for name in $ONLY; do
     # shellcheck disable=SC2086
@@ -78,3 +93,6 @@ print(f"{name:14} rep {rep}: {r.get('rps', 0):>9.1f} req/s  p50 {lat.get('p50_ms
 EOF
   done
 done | tee "$OUT/summary.txt"
+
+kill "$SAMPLER" 2>/dev/null || true
+python3 "$(dirname "$0")/memory_summary.py" "$OUT"

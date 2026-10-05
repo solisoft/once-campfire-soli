@@ -1,67 +1,99 @@
-class Session < Model
+# Sessions live in SoliKV: "campfire:session:<token>" holds the session as JSON, and
+# "campfire:user_sessions:<user key>" the set of a user's tokens, for signing a user out
+# everywhere (deactivation, bans) and for their IP addresses (bans). No expiry, like the
+# reference's sessions table: a session ends when it is destroyed.
+class Session
   static ACTIVITY_REFRESH_MS: Int = 3600000
+
+  static def key(token)
+    "campfire:session:" + token
+  end
+
+  static def user_key_set(user_key)
+    "campfire:user_sessions:" + user_key
+  end
 
   static def start(user_key, user_agent, ip_address)
     now = Clock.now
     token = Crypto.random_token(24)
-    Ids.create(Session, {"token": token, "user_id": user_key, "user_agent": user_agent, "ip_address": ip_address,
-                    "last_active_at": now, "created_at": now, "updated_at": now})
-    {"token": token, "user_id": user_key, "last_active_at": now}
+    session = {"_key": token, "token": token, "user_id": user_key, "user_agent": user_agent, "ip_address": ip_address,
+               "last_active_at": now, "created_at": now, "updated_at": now}
+    KV.set(Session.key(token), json_stringify(session))
+    KV.sadd(Session.user_key_set(user_key), token)
+    session
   end
 
-  # The session and its user in one round trip.
-  static def find_with_user(token)
+  static def find(token)
     return nil if token.blank?
 
-    t = token
-    rows = @sdbql{
-      FOR s IN sessions FILTER s.token == #{t}
-        FOR u IN users FILTER u._key == s.user_id
-          LIMIT 1
-          RETURN {session: s, user: u}
-    }
-    Db.first(rows)
+    raw = KV.get(Session.key(token)) rescue nil
+    return nil if raw.nil?
+
+    JSON.parse(raw) rescue nil
+  end
+
+  # The session and its user (Action Cable connections).
+  static def find_with_user(token)
+    session = Session.find(token)
+    return nil if session.nil?
+
+    user = User.find_hash(session["user_id"])
+    user.nil? ? nil : {"session": session, "user": user}
   end
 
   # The account, and the session and its user when the token names one: every request's
-  # first (and for most pages only) lookup.
+  # first lookup (behind SessionCache). One SoliKV read, then one SoliDB query.
   static def context(token)
-    t = token ?? ""
+    session = Session.find(token)
+    uk = session.nil? ? "" : session["user_id"]
     rows = @sdbql{
       LET account = FIRST(FOR a IN accounts FILTER a._key == "campfire" RETURN a)
-      LET session = #{t} == "" ? null : FIRST(FOR s IN sessions FILTER s.token == #{t} LIMIT 1 RETURN s)
-      LET user = session == null ? null : FIRST(FOR u IN users FILTER u._key == session.user_id RETURN u)
-      RETURN {account: account, session: session, user: user}
+      LET user = #{uk} == "" ? null : FIRST(FOR u IN users FILTER u._key == #{uk} RETURN u)
+      RETURN {account: account, user: user}
     }
-    Db.array(rows).length > 0 ? rows[0] : {"account": nil, "session": nil, "user": nil}
+    found = Db.first(rows)
+    return {"account": nil, "session": nil, "user": nil} if found.nil?
+
+    found["session"] = found["user"].nil? ? nil : session
+    found
   end
 
   static def resume(session, user_agent, ip_address)
     now = Clock.now
     return nil unless session["last_active_at"] < now - Session.ACTIVITY_REFRESH_MS
 
-    k = session["_key"]
-    @sdbql{
-      FOR s IN sessions FILTER s._key == #{k}
-        UPDATE s WITH {user_agent: #{user_agent}, ip_address: #{ip_address}, last_active_at: #{now}, updated_at: #{now}} IN sessions
-    }
-    # The row may be a worker's cached copy (SessionCache): keep it from asking again.
+    session["user_agent"] = user_agent
+    session["ip_address"] = ip_address
     session["last_active_at"] = now
+    session["updated_at"] = now
+    KV.set(Session.key(session["token"]), json_stringify(session)) rescue nil
   end
 
   static def destroy_token(token)
-    t = token
-    @sdbql{ FOR s IN sessions FILTER s.token == #{t} REMOVE s IN sessions }
+    session = Session.find(token)
+    KV.delete(Session.key(token)) rescue nil
+    KV.srem(Session.user_key_set(session["user_id"]), token) rescue nil unless session.nil?
+  end
+
+  static def tokens_for_user(user_key)
+    tokens = KV.smembers(Session.user_key_set(user_key)) rescue []
+    tokens.is_a?("array") ? tokens : []
   end
 
   static def destroy_for_user(user_key)
-    uk = user_key
-    @sdbql{ FOR s IN sessions FILTER s.user_id == #{uk} REMOVE s IN sessions }
+    for token in Session.tokens_for_user(user_key)
+      KV.delete(Session.key(token)) rescue nil
+    end
+    KV.delete(Session.user_key_set(user_key)) rescue nil
   end
 
   static def ip_addresses_for_user(user_key)
-    uk = user_key
-    rows = @sdbql{ FOR s IN sessions FILTER s.user_id == #{uk} AND s.ip_address != null AND s.ip_address != "" RETURN DISTINCT s.ip_address }
-    Db.array(rows)
+    ips = []
+    for token in Session.tokens_for_user(user_key)
+      session = Session.find(token)
+      ip = session.nil? ? nil : session["ip_address"]
+      ips.push(ip) unless ip.blank? || ips.include?(ip)
+    end
+    ips
   end
 end

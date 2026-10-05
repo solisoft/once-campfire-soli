@@ -1,0 +1,5 @@
+room_show      rep 1:   36021.1 req/s  p50  0.365 ms  p99  1.322 ms  CPU/req rust    84 µs  statuses {'200': 144123}  invalid 0
+messages_page  rep 1:   38804.3 req/s  p50  0.345 ms  p99  1.158 ms  CPU/req rust    72 µs  statuses {'200': 155238}  invalid 0
+sidebar        rep 1:   35874.2 req/s  p50  0.369 ms  p99  1.338 ms  CPU/req rust    88 µs  statuses {'200': 143517}  invalid 0
+search         rep 1:   37138.9 req/s  p50  0.395 ms  p99  0.952 ms  CPU/req rust    82 µs  statuses {'200': 148570}  invalid 0
+post_message   rep 1:    4307.6 req/s  p50  0.219 ms  p99  0.315 ms  CPU/req rust   236 µs  statuses {'200': 17231}  invalid 0

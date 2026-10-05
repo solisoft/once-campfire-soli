@@ -40,11 +40,14 @@ cp "$SEED/db/production.sqlite3" "$WORK/storage/db/production.sqlite3"
 cp -r "$SEED/storage/." "$WORK/storage/files/"
 
 echo "bench: $IMAGE on CPUs $CPUS, direct listener on port $PORT" >&2
+STARTED=$(date +%s%N)
 taskset -c "$CPUS" "$ENGINE" run -d --name "$NAME" --network host --userns=keep-id \
   -e SECRET_KEY_BASE="$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')" -e DISABLE_SSL=1 \
   -e HTTP_PORT="$PUBLIC_PORT" -e TARGET_PORT="$PORT" -e TARGET_BIND=127.0.0.1 \
   -v "$WORK/storage:/rails/storage" "$IMAGE" /rails/bin/boot > /dev/null
-for _ in $(seq 300); do curl -s -o /dev/null "127.0.0.1:$PORT/up" && break; sleep 0.1; done
+for _ in $(seq 3000); do curl -s -o /dev/null "127.0.0.1:$PORT/up" && break; sleep 0.01; done
+COLD_START_MS=$(( ($(date +%s%N) - STARTED) / 1000000 ))
+echo "bench: cold start until /up answers (container run included): $COLD_START_MS ms" >&2
 curl -s -o /dev/null "127.0.0.1:$PORT/up" || { "$ENGINE" logs "$NAME" | tail -20 >&2; exit 1; }
 
 PID=$(fuser "$PORT/tcp" 2>/dev/null | awk '{print $1}')
@@ -62,6 +65,8 @@ done
   echo "image: $IMAGE $("$ENGINE" image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null | cut -c1-19)"
   echo "seed: $(sha256sum "$SEED/db/production.sqlite3" | cut -d' ' -f1)"
   echo "workload: secs=$SECS conc=$CONC reps=$REPS"
+  echo "cold start until /up: $COLD_START_MS ms"
+  echo "cold start until /up: $COLD_START_MS ms"
 } > "$OUT/env.txt"
 
 "$ROOT/bench/measure" --base "http://127.0.0.1:$PORT" --seed "$SEED" --loadgen "$LOADGEN" --out "$OUT" \

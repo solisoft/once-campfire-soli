@@ -5,23 +5,23 @@
   "gzip": true,
   "invalid_responses": 0,
   "latency": {
-    "max_ms": 8.591,
-    "mean_ms": 2.54,
-    "n": 25158,
-    "p50_ms": 2.519,
-    "p90_ms": 2.995,
-    "p99_ms": 3.925
+    "max_ms": 11.495,
+    "mean_ms": 2.55,
+    "n": 25104,
+    "p50_ms": 2.529,
+    "p90_ms": 3.011,
+    "p99_ms": 3.889
   },
-  "ok": 25158,
+  "ok": 25104,
   "path": "POST /rooms/201306877/messages",
-  "rps": 6286.7,
+  "rps": 6272.7,
   "secs": 4.0,
   "statuses": {
-    "200": 25158
+    "200": 25104
   },
   "cpu_us_per_request": {
-    "app": 287.8,
-    "solidb": 244.1,
-    "solikv": 9.9
+    "app": 287.2,
+    "solidb": 245.4,
+    "solikv": 9.6
   }
 }

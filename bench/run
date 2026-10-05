@@ -71,9 +71,12 @@ bin/import-seed "$SEED" --database campfire_bench > "$WORK/import.log"
 soli db:seed . db/seeds/after_import.sl > "$WORK/after_import.log" 2>&1
 
 echo "bench: Soli on CPUs $CPUS, $WORKERS workers, port $APP_PORT" >&2
+STARTED=$(date +%s%N)
 taskset -c "$CPUS" soli serve . --port "$APP_PORT" --strict-port --workers "$WORKERS" > "$WORK/app.log" 2>&1 &
 APP_PID=$!
-for _ in $(seq 300); do curl -s -o /dev/null "localhost:$APP_PORT/up" && break; sleep 0.1; done
+for _ in $(seq 3000); do curl -s -o /dev/null "127.0.0.1:$APP_PORT/up" && break; sleep 0.01; done
+COLD_START_MS=$(( ($(date +%s%N) - STARTED) / 1000000 ))
+echo "bench: cold start until /up answers: $COLD_START_MS ms" >&2
 
 APP_SERVER_PID=$(fuser "$APP_PORT/tcp" 2>/dev/null | awk '{print $1}')
 DB_SERVER_PID=$(fuser "$DB_PORT/tcp" 2>/dev/null | awk '{print $1}')
@@ -93,6 +96,7 @@ echo "bench: app $APP_SERVER_PID, solidb $DB_SERVER_PID, solikv $KV_SERVER_PID: 
   echo "seed: $(sha256sum "$SEED/db/production.sqlite3" | cut -d' ' -f1)"
   echo "app: $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)$(git -C "$ROOT" diff --quiet 2>/dev/null || echo ' (dirty)')"
   echo "workload: secs=$SECS conc=$CONC reps=$REPS"
+  echo "cold start until /up: $COLD_START_MS ms"
 } > "$OUT/env.txt"
 "$ROOT/bench/measure" --base "$BASE" --seed "$SEED" --loadgen "$LOADGEN" --out "$OUT" \
   --pids "app:$APP_SERVER_PID solidb:$DB_SERVER_PID solikv:$KV_SERVER_PID" \

@@ -5,23 +5,23 @@
   "gzip": true,
   "invalid_responses": 0,
   "latency": {
-    "max_ms": 2.107,
+    "max_ms": 2.163,
     "mean_ms": 0.69,
-    "n": 92699,
-    "p50_ms": 0.678,
-    "p90_ms": 0.868,
-    "p99_ms": 1.114
+    "n": 92733,
+    "p50_ms": 0.677,
+    "p90_ms": 0.866,
+    "p99_ms": 1.11
   },
-  "ok": 92699,
+  "ok": 92733,
   "path": "/rooms/486777696/messages?before=933434569",
-  "rps": 23170.3,
+  "rps": 23179.6,
   "secs": 4.0,
   "statuses": {
-    "200": 92699
+    "200": 92733
   },
   "cpu_us_per_request": {
-    "app": 120.2,
-    "solidb": 19.5,
+    "app": 120.1,
+    "solidb": 19.3,
     "solikv": 0.2
   }
 }

@@ -12,7 +12,7 @@ Load the `soli-lang` and `solidb` skills before writing Soli or SDBQL.
 | Path | What |
 |---|---|
 | `app/models/*.sl` | One class per collection. Static methods; rows are plain hashes (`user["name"]`). Hot paths use `@sdbql{}`. |
-| `app/services/*.sl` | Everything else: Authentication, Cable (Action Cable), RichText, MessagePresenter, RoomPage/MessagePage/SearchPage/Sidebar (the benchmarked pages), Present (view decoration), PageCache, Signer, Ids, Attachments, PushQueue/MessagePusher/WebPush, Opengraph, Sounds… |
+| `app/services/*.sl` | Everything else (sessions are in SoliKV, see `app/models/session.sl` and SessionCache): Authentication, Cable (Action Cable), RichText, MessagePresenter, RoomPage/MessagePage/SearchPage/Sidebar (the benchmarked pages), Present (view decoration), PageCache, Signer, Ids, Attachments, PushQueue/MessagePusher/WebPush, Opengraph, Sounds… |
 | `app/controllers/` | `x/y_controller.sl` → `class XYController`. All inherit ApplicationController. |
 | `app/helpers/*.sl` | Functions for views (`image_tag`, `avatar_tag`, `button_to`, `translation_button`, …). |
 | `app/views/**/*.html.slv` | Ported ERB. |
