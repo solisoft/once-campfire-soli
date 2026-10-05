@@ -1,0 +1,15 @@
+room_show      rep 1:   16805.0 req/s  p50  0.937 ms  p99   1.49 ms  CPU/req app   193 µs + solidb    17 µs + solikv     0 µs  statuses {'200': 67236}  invalid 0
+messages_page  rep 1:   23170.3 req/s  p50  0.678 ms  p99  1.114 ms  CPU/req app   120 µs + solidb    20 µs + solikv     0 µs  statuses {'200': 92699}  invalid 0
+sidebar        rep 1:   59858.0 req/s  p50  0.263 ms  p99  0.414 ms  CPU/req app    46 µs + solidb    10 µs + solikv     0 µs  statuses {'200': 239449}  invalid 0
+search         rep 1:   29060.0 req/s  p50  0.542 ms  p99  0.837 ms  CPU/req app   108 µs + solidb    14 µs + solikv     0 µs  statuses {'200': 116252}  invalid 0
+post_message   rep 1:    6286.7 req/s  p50  2.519 ms  p99  3.925 ms  CPU/req app   288 µs + solidb   244 µs + solikv    10 µs  statuses {'200': 25158}  invalid 0
+room_show      rep 2:   16276.7 req/s  p50  0.969 ms  p99  1.563 ms  CPU/req app   200 µs + solidb    17 µs + solikv     0 µs  statuses {'200': 65123}  invalid 0
+messages_page  rep 2:   23172.5 req/s  p50  0.679 ms  p99  1.099 ms  CPU/req app   120 µs + solidb    20 µs + solikv     0 µs  statuses {'200': 92707}  invalid 0
+sidebar        rep 2:   59867.2 req/s  p50  0.262 ms  p99  0.412 ms  CPU/req app    46 µs + solidb    10 µs + solikv     0 µs  statuses {'200': 239491}  invalid 0
+search         rep 2:   28667.0 req/s  p50  0.549 ms  p99  0.848 ms  CPU/req app   109 µs + solidb    14 µs + solikv     0 µs  statuses {'200': 114686}  invalid 0
+post_message   rep 2:    6009.1 req/s  p50  2.623 ms  p99  4.663 ms  CPU/req app   289 µs + solidb   269 µs + solikv    10 µs  statuses {'200': 24049}  invalid 0
+room_show      rep 3:   16141.0 req/s  p50  0.977 ms  p99  1.558 ms  CPU/req app   202 µs + solidb    17 µs + solikv     1 µs  statuses {'200': 64581}  invalid 0
+messages_page  rep 3:   22938.5 req/s  p50  0.682 ms  p99  1.154 ms  CPU/req app   121 µs + solidb    21 µs + solikv     0 µs  statuses {'200': 91773}  invalid 0
+sidebar        rep 3:   59923.6 req/s  p50  0.262 ms  p99  0.414 ms  CPU/req app    46 µs + solidb    10 µs + solikv     0 µs  statuses {'200': 239710}  invalid 0
+search         rep 3:   28563.7 req/s  p50  0.551 ms  p99  0.854 ms  CPU/req app   110 µs + solidb    14 µs + solikv     0 µs  statuses {'200': 114270}  invalid 0
+post_message   rep 3:    5970.8 req/s  p50  2.617 ms  p99  5.543 ms  CPU/req app   290 µs + solidb   274 µs + solikv    10 µs  statuses {'200': 23896}  invalid 0

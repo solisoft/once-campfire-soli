@@ -45,6 +45,8 @@ class Session < Model
       FOR s IN sessions FILTER s._key == #{k}
         UPDATE s WITH {user_agent: #{user_agent}, ip_address: #{ip_address}, last_active_at: #{now}, updated_at: #{now}} IN sessions
     }
+    # The row may be a worker's cached copy (SessionCache): keep it from asking again.
+    session["last_active_at"] = now
   end
 
   static def destroy_token(token)

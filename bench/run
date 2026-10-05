@@ -45,9 +45,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-lg() { taskset -c "$CLIENT_CPUS" "$LOADGEN" "$@"; }
-# CPU seconds (user + system) a process and its threads have used.
-cpu() { awk '{ printf "%.3f", ($14 + $15) / 100 }' "/proc/$1/stat"; }
 
 echo "bench: SoliDB on CPUs $CPUS, port $DB_PORT" >&2
 # From its own directory: solidb reads a .env in its working directory, and the app's
@@ -82,53 +79,23 @@ APP_SERVER_PID=$(fuser "$APP_PORT/tcp" 2>/dev/null | awk '{print $1}')
 DB_SERVER_PID=$(fuser "$DB_PORT/tcp" 2>/dev/null | awk '{print $1}')
 KV_SERVER_PID=$(fuser "$KV_PORT/tcp" 2>/dev/null | awk '{print $1}')
 BASE="http://127.0.0.1:$APP_PORT"
-labels() { python3 -c "import json,sys; print(json.load(open('$SEED/labels.json'))['$1'])"; }
-COOKIE=$(lg login --base "$BASE" --email "$(labels emails.david)" --password "$(labels passwords.all)" |
-  python3 -c "import json,sys; print(json.load(sys.stdin)['cookie'])")
-ROOM=$(labels rooms.watercooler)
-SCRAPE=$(lg scrape --base "$BASE" --cookie "$COOKIE" --room "$ROOM")
-CSRF=$(echo "$SCRAPE" | python3 -c "import json,sys; print(json.load(sys.stdin)['csrf'] or '')")
-
-declare -A ROUTES=(
-  [room_show]="--path /rooms/$ROOM"
-  [messages_page]="--path /rooms/$ROOM/messages?before=$(labels messages.busy_060)"
-  [sidebar]="--path /users/me/sidebar"
-  [search]="--path /searches?q=coffee"
-  [post_message]="--post-room $(labels rooms.hq) --csrf $CSRF"
-)
+for pid in "$APP_SERVER_PID" "$DB_SERVER_PID" "$KV_SERVER_PID"; do
+  for task in /proc/$pid/task/*; do
+    [ "$(taskset -cp "${task##*/}" | sed 's/.*: //')" = "$CPUS" ] || { echo "bench: $pid thread ${task##*/} is not on CPUs $CPUS" >&2; exit 1; }
+  done
+done
+echo "bench: app $APP_SERVER_PID, solidb $DB_SERVER_PID, solikv $KV_SERVER_PID: every thread on CPUs $CPUS" >&2
 {
   echo "date: $(date -Iseconds)"
   echo "host: $(uname -r), $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //'), $(nproc) threads"
   echo "server cpus: $CPUS (app and SoliDB); loadgen cpus: $CLIENT_CPUS; workers: $WORKERS"
   echo "soli: $(soli --version 2>&1 | head -1); solidb: $(readlink -f "$(command -v solidb)")"
   echo "seed: $(sha256sum "$SEED/db/production.sqlite3" | cut -d' ' -f1)"
-  echo "app: $(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo ' (dirty)')"
+  echo "app: $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)$(git -C "$ROOT" diff --quiet 2>/dev/null || echo ' (dirty)')"
   echo "workload: secs=$SECS conc=$CONC reps=$REPS"
 } > "$OUT/env.txt"
-
-for rep in $(seq "$REPS"); do
-  for name in $ONLY; do
-    # shellcheck disable=SC2086
-    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc 1 --duration 1 > /dev/null
-    app0=$(cpu "$APP_SERVER_PID") db0=$(cpu "$DB_SERVER_PID") kv0=$(cpu "$KV_SERVER_PID")
-    # shellcheck disable=SC2086
-    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc "$CONC" --duration "$SECS" > "$OUT/$name-$rep.json"
-    app1=$(cpu "$APP_SERVER_PID") db1=$(cpu "$DB_SERVER_PID") kv1=$(cpu "$KV_SERVER_PID")
-    python3 - "$OUT/$name-$rep.json" "$name" "$rep" "$app0" "$app1" "$db0" "$db1" "$kv0" "$kv1" <<'EOF'
-import json, sys
-path, name, rep, app0, app1, db0, db1, kv0, kv1 = sys.argv[1:]
-r = json.load(open(path))
-lat = r.get("latency", {})
-n = max(lat.get("n", 0), 1)
-app_us = (float(app1) - float(app0)) * 1e6 / n
-db_us = (float(db1) - float(db0)) * 1e6 / n
-kv_us = (float(kv1) - float(kv0)) * 1e6 / n
-r["cpu_us_per_request"] = {"app": round(app_us, 1), "solidb": round(db_us, 1), "solikv": round(kv_us, 1)}
-json.dump(r, open(path, "w"), indent=2)
-print(f"{name:14} rep {rep}: {r.get('rps', 0):>9.1f} req/s  p50 {lat.get('p50_ms', 0):>6} ms  p99 {lat.get('p99_ms', 0):>6} ms  "
-      f"CPU/req app {app_us:6.0f} µs + solidb {db_us:5.0f} µs + solikv {kv_us:4.0f} µs  statuses {r.get('statuses')}  invalid {r.get('invalid_responses', 0)}")
-EOF
-  done
-done | tee "$OUT/summary.txt"
+"$ROOT/bench/measure" --base "$BASE" --seed "$SEED" --loadgen "$LOADGEN" --out "$OUT" \
+  --pids "app:$APP_SERVER_PID solidb:$DB_SERVER_PID solikv:$KV_SERVER_PID" \
+  --client-cpus "$CLIENT_CPUS" --secs "$SECS" --conc "$CONC" --reps "$REPS" --only "$ONLY"
 cp "$WORK/app.log" "$OUT/app.log"
 echo "bench: results in ${OUT#"$ROOT"/}" >&2

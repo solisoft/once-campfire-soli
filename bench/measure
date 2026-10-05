@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Drive the reference README's five HTTP workloads against any Campfire at BASE, the way
+# once-campfire-elixir's harness does: signed in as david, keep-alive clients, every response
+# checked for 200 and a body. Used by bench/run for this app and on its own for the others.
+#
+#   bench/measure --base http://127.0.0.1:PORT --seed SEED_DIR --loadgen PATH --out DIR
+#                 [--pids "app:PID solidb:PID …"] [--client-cpus 12-15] [--secs 4] [--conc 16]
+#                 [--reps 2] [--only "room_show sidebar …"]
+#
+# --pids names the server processes whose CPU time (user + system, all threads) is divided by
+# the requests served, per workload.
+set -euo pipefail
+
+BASE="" SEED="" LOADGEN="" OUT="" PIDS="" CLIENT_CPUS=12-15 SECS=4 CONC=16 REPS=2
+ONLY="room_show messages_page sidebar search post_message"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base) BASE=$2; shift 2 ;;
+    --seed) SEED=$2; shift 2 ;;
+    --loadgen) LOADGEN=$2; shift 2 ;;
+    --out) OUT=$2; shift 2 ;;
+    --pids) PIDS=$2; shift 2 ;;
+    --client-cpus) CLIENT_CPUS=$2; shift 2 ;;
+    --secs) SECS=$2; shift 2 ;;
+    --conc) CONC=$2; shift 2 ;;
+    --reps) REPS=$2; shift 2 ;;
+    --only) ONLY=$2; shift 2 ;;
+    *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 1 ;;
+  esac
+done
+[ -n "$BASE" ] && [ -n "$SEED" ] && [ -n "$LOADGEN" ] && [ -n "$OUT" ] || { echo "bench/measure: --base, --seed, --loadgen and --out are required" >&2; exit 1; }
+mkdir -p "$OUT"
+
+lg() { taskset -c "$CLIENT_CPUS" "$LOADGEN" "$@"; }
+# name=cpu-seconds for every --pids entry (user + system, all threads).
+cpus() {
+  for entry in $PIDS; do
+    awk -v n="${entry%%:*}" '{ printf "%s=%.3f ", n, ($14 + $15) / 100 }' "/proc/${entry#*:}/stat"
+  done
+}
+labels() { python3 -c "import json,sys; print(json.load(open('$SEED/labels.json'))['$1'])"; }
+
+COOKIE=$(lg login --base "$BASE" --email "$(labels emails.david)" --password "$(labels passwords.all)" |
+  python3 -c "import json,sys; print(json.load(sys.stdin)['cookie'])")
+ROOM=$(labels rooms.watercooler)
+CSRF=$(lg scrape --base "$BASE" --cookie "$COOKIE" --room "$ROOM" | python3 -c "import json,sys; print(json.load(sys.stdin)['csrf'] or '')")
+
+declare -A ROUTES=(
+  [room_show]="--path /rooms/$ROOM"
+  [messages_page]="--path /rooms/$ROOM/messages?before=$(labels messages.busy_060)"
+  [sidebar]="--path /users/me/sidebar"
+  [search]="--path /searches?q=coffee"
+  [post_message]="--post-room $(labels rooms.hq) --csrf $CSRF"
+)
+
+for rep in $(seq "$REPS"); do
+  for name in $ONLY; do
+    # shellcheck disable=SC2086
+    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc 1 --duration 1 > /dev/null
+    before=$(cpus)
+    # shellcheck disable=SC2086
+    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc "$CONC" --duration "$SECS" > "$OUT/$name-$rep.json"
+    after=$(cpus)
+    python3 - "$OUT/$name-$rep.json" "$name" "$rep" "$before" "$after" <<'EOF'
+import json, sys
+path, name, rep, before, after = sys.argv[1:]
+parse = lambda s: dict((k, float(v)) for k, v in (kv.split("=") for kv in s.split()))
+b, a = parse(before), parse(after)
+r = json.load(open(path))
+lat = r.get("latency", {})
+n = max(lat.get("n", 0), 1)
+cpu = {k: round((a[k] - b[k]) * 1e6 / n, 1) for k in b}
+r["cpu_us_per_request"] = cpu
+json.dump(r, open(path, "w"), indent=2)
+cpu_text = " + ".join(f"{k} {v:5.0f} µs" for k, v in cpu.items())
+print(f"{name:14} rep {rep}: {r.get('rps', 0):>9.1f} req/s  p50 {lat.get('p50_ms', 0):>6} ms  p99 {lat.get('p99_ms', 0):>6} ms  "
+      f"CPU/req {cpu_text or '-'}  statuses {r.get('statuses')}  invalid {r.get('invalid_responses', 0)}")
+EOF
+  done
+done | tee "$OUT/summary.txt"

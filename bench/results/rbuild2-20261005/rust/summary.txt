@@ -1,0 +1,15 @@
+room_show      rep 1:   36071.8 req/s  p50  0.369 ms  p99  1.328 ms  CPU/req rust    84 µs  statuses {'200': 144300}  invalid 0
+messages_page  rep 1:   38404.0 req/s  p50  0.348 ms  p99  1.159 ms  CPU/req rust    72 µs  statuses {'200': 153628}  invalid 0
+sidebar        rep 1:   35308.5 req/s  p50  0.373 ms  p99  1.358 ms  CPU/req rust    89 µs  statuses {'200': 141247}  invalid 0
+search         rep 1:   36861.1 req/s  p50  0.397 ms  p99  0.962 ms  CPU/req rust    82 µs  statuses {'200': 147466}  invalid 0
+post_message   rep 1:    4356.1 req/s  p50  0.216 ms  p99  0.313 ms  CPU/req rust   233 µs  statuses {'200': 17425}  invalid 0
+room_show      rep 2:   32212.2 req/s  p50   0.42 ms  p99  1.398 ms  CPU/req rust    91 µs  statuses {'200': 128861}  invalid 0
+messages_page  rep 2:   33599.1 req/s  p50  0.402 ms  p99  1.239 ms  CPU/req rust    78 µs  statuses {'200': 134407}  invalid 0
+sidebar        rep 2:   34564.0 req/s  p50  0.383 ms  p99  1.367 ms  CPU/req rust    90 µs  statuses {'200': 138268}  invalid 0
+search         rep 2:   35669.8 req/s  p50  0.412 ms  p99  0.973 ms  CPU/req rust    86 µs  statuses {'200': 142691}  invalid 0
+post_message   rep 2:    4332.7 req/s  p50  0.218 ms  p99  0.309 ms  CPU/req rust   234 µs  statuses {'200': 17332}  invalid 0
+room_show      rep 3:   31819.1 req/s  p50  0.426 ms  p99   1.41 ms  CPU/req rust    91 µs  statuses {'200': 127303}  invalid 0
+messages_page  rep 3:   32828.3 req/s  p50   0.41 ms  p99  1.297 ms  CPU/req rust    78 µs  statuses {'200': 131324}  invalid 0
+sidebar        rep 3:   34608.7 req/s  p50  0.386 ms  p99  1.363 ms  CPU/req rust    90 µs  statuses {'200': 138454}  invalid 0
+search         rep 3:   36223.8 req/s  p50  0.405 ms  p99  0.959 ms  CPU/req rust    85 µs  statuses {'200': 144909}  invalid 0
+post_message   rep 3:    4307.7 req/s  p50  0.219 ms  p99  0.313 ms  CPU/req rust   235 µs  statuses {'200': 17231}  invalid 0

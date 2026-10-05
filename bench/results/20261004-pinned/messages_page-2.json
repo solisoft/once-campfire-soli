@@ -1,0 +1,27 @@
+{
+  "avg_bytes": 389283,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 5.775,
+    "mean_ms": 2.01,
+    "n": 31709,
+    "p50_ms": 1.985,
+    "p90_ms": 2.445,
+    "p99_ms": 3.079
+  },
+  "ok": 31709,
+  "path": "/rooms/486777696/messages?before=933434569",
+  "rps": 7923.6,
+  "secs": 4.0,
+  "statuses": {
+    "200": 31709
+  },
+  "cpu_us_per_request": {
+    "app": 346.9,
+    "solidb": 63.7,
+    "solikv": 1.9
+  }
+}

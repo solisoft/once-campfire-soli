@@ -1,0 +1,10 @@
+room_show      rep 1:    5656.5 req/s  p50  2.787 ms  p99  4.315 ms  CPU/req app    553 µs + solidb    59 µs + solikv    2 µs  statuses {'200': 22641}  invalid 0
+messages_page  rep 1:    7816.9 req/s  p50  1.989 ms  p99  3.439 ms  CPU/req app    351 µs + solidb    65 µs + solikv    2 µs  statuses {'200': 31282}  invalid 0
+sidebar        rep 1:   19991.1 req/s  p50  0.792 ms  p99  1.159 ms  CPU/req app    127 µs + solidb    37 µs + solikv    0 µs  statuses {'200': 79982}  invalid 0
+search         rep 1:   10116.1 req/s  p50  1.555 ms  p99  2.397 ms  CPU/req app    282 µs + solidb    50 µs + solikv    1 µs  statuses {'200': 40479}  invalid 0
+post_message   rep 1:    3806.3 req/s  p50  4.081 ms  p99  6.471 ms  CPU/req app    515 µs + solidb   367 µs + solikv   18 µs  statuses {'200': 15241}  invalid 0
+room_show      rep 2:    5598.5 req/s  p50  2.815 ms  p99  4.355 ms  CPU/req app    558 µs + solidb    59 µs + solikv    3 µs  statuses {'200': 22411}  invalid 0
+messages_page  rep 2:    7923.6 req/s  p50  1.985 ms  p99  3.079 ms  CPU/req app    347 µs + solidb    64 µs + solikv    2 µs  statuses {'200': 31709}  invalid 0
+sidebar        rep 2:   19681.1 req/s  p50  0.803 ms  p99  1.203 ms  CPU/req app    129 µs + solidb    37 µs + solikv    0 µs  statuses {'200': 78740}  invalid 0
+search         rep 2:   10157.1 req/s  p50  1.554 ms  p99  2.347 ms  CPU/req app    281 µs + solidb    49 µs + solikv    1 µs  statuses {'200': 40643}  invalid 0
+post_message   rep 2:    3662.7 req/s  p50  4.235 ms  p99  7.831 ms  CPU/req app    521 µs + solidb   403 µs + solikv   19 µs  statuses {'200': 14666}  invalid 0

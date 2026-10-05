@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# The same five workloads against once-campfire-rust, on the same machine and CPUs as
+# bench/run, for a same-hardware reference. The Rust app runs from its own image (built from
+# its Dockerfile) on a fresh copy of the parity seed, and is measured on its direct listener
+# (identity encoding, like Soli; its public front server's compression is not exercised).
+#
+#   bench/run-rust --seed SEED_DIR --loadgen PATH --image campfire-rust:bench
+#                  [--cpus 8-11] [--client-cpus 12-15] [--secs 4] [--conc 16] [--reps 2]
+#                  [--engine podman] [--out DIR]
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+SEED="" LOADGEN="" IMAGE=campfire-rust:bench CPUS=8-11 CLIENT_CPUS=12-15 SECS=4 CONC=16 REPS=2 ENGINE=podman
+OUT="$ROOT/bench/results/rust-$(date +%Y%m%d-%H%M%S)"
+PORT=13300 PUBLIC_PORT=18380
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --seed) SEED=$2; shift 2 ;;
+    --loadgen) LOADGEN=$2; shift 2 ;;
+    --image) IMAGE=$2; shift 2 ;;
+    --cpus) CPUS=$2; shift 2 ;;
+    --client-cpus) CLIENT_CPUS=$2; shift 2 ;;
+    --secs) SECS=$2; shift 2 ;;
+    --conc) CONC=$2; shift 2 ;;
+    --reps) REPS=$2; shift 2 ;;
+    --engine) ENGINE=$2; shift 2 ;;
+    --out) OUT=$2; shift 2 ;;
+    *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 1 ;;
+  esac
+done
+[ -n "$SEED" ] && [ -n "$LOADGEN" ] || { echo "bench/run-rust: --seed and --loadgen are required" >&2; exit 1; }
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/campfire-rust-bench.XXXXXX")
+NAME="campfire-rust-bench-$$"
+mkdir -p "$OUT" "$WORK/storage/db" "$WORK/storage/files"
+cleanup() { "$ENGINE" rm -f "$NAME" > /dev/null 2>&1 || true; rm -rf "$WORK"; }
+trap cleanup EXIT
+
+cp "$SEED/db/production.sqlite3" "$WORK/storage/db/production.sqlite3"
+cp -r "$SEED/storage/." "$WORK/storage/files/"
+
+echo "bench: $IMAGE on CPUs $CPUS, direct listener on port $PORT" >&2
+taskset -c "$CPUS" "$ENGINE" run -d --name "$NAME" --network host --userns=keep-id \
+  -e SECRET_KEY_BASE="$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')" -e DISABLE_SSL=1 \
+  -e HTTP_PORT="$PUBLIC_PORT" -e TARGET_PORT="$PORT" -e TARGET_BIND=127.0.0.1 \
+  -v "$WORK/storage:/rails/storage" "$IMAGE" /rails/bin/boot > /dev/null
+for _ in $(seq 300); do curl -s -o /dev/null "127.0.0.1:$PORT/up" && break; sleep 0.1; done
+curl -s -o /dev/null "127.0.0.1:$PORT/up" || { "$ENGINE" logs "$NAME" | tail -20 >&2; exit 1; }
+
+PID=$(fuser "$PORT/tcp" 2>/dev/null | awk '{print $1}')
+# taskset on the engine command does not reach the container's process (it is started by
+# conmon), so pin the process and every thread it has once it is up.
+taskset -a -cp "$CPUS" "$PID" > /dev/null
+echo "bench: pid $PID, affinity $(taskset -cp "$PID" | sed 's/.*: //') ($(ls /proc/$PID/task | wc -l) threads)" >&2
+for task in /proc/$PID/task/*; do
+  [ "$(taskset -cp "${task##*/}" | sed 's/.*: //')" = "$CPUS" ] || { echo "bench: thread ${task##*/} is not pinned" >&2; exit 1; }
+done
+{
+  echo "date: $(date -Iseconds)"
+  echo "host: $(uname -r), $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //'), $(nproc) threads"
+  echo "server cpus: $CPUS; loadgen cpus: $CLIENT_CPUS"
+  echo "image: $IMAGE $("$ENGINE" image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null | cut -c1-19)"
+  echo "seed: $(sha256sum "$SEED/db/production.sqlite3" | cut -d' ' -f1)"
+  echo "workload: secs=$SECS conc=$CONC reps=$REPS"
+} > "$OUT/env.txt"
+
+"$ROOT/bench/measure" --base "http://127.0.0.1:$PORT" --seed "$SEED" --loadgen "$LOADGEN" --out "$OUT" \
+  --pids "rust:$PID" --client-cpus "$CLIENT_CPUS" --secs "$SECS" --conc "$CONC" --reps "$REPS"
+echo "bench: results in ${OUT#"$ROOT"/}" >&2

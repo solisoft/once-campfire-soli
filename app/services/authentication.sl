@@ -22,7 +22,7 @@ class Authentication
   static def run(req)
     path = req["path"]
     method = req["method"]
-    context = Session.context(Authentication.token_from_cookie(cookies[Authentication.COOKIE]))
+    context = SessionCache.fetch(Authentication.token_from_cookie(cookies[Authentication.COOKIE]))
     req["account"] = context["account"]
     req["authenticated_by"] = ""
     req["_auth_context"] = context
@@ -85,7 +85,10 @@ class Authentication
 
   static def terminate_session(req)
     session = req["current_session"]
-    Session.destroy_token(session["token"]) unless session.nil?
+    unless session.nil?
+      Session.destroy_token(session["token"])
+      SessionCache.forget(session["token"])
+    end
     set_cookie(Authentication.COOKIE, "", {"max_age": 0, "http_only": true, "same_site": "Lax"})
     Cable.disconnect_user(req["current_user"]["_key"], true) unless req["current_user"].nil?
   end

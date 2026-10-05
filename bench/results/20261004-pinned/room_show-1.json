@@ -1,0 +1,27 @@
+{
+  "avg_bytes": 421131,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 19.887,
+    "mean_ms": 2.81,
+    "n": 22641,
+    "p50_ms": 2.787,
+    "p90_ms": 3.489,
+    "p99_ms": 4.315
+  },
+  "ok": 22641,
+  "path": "/rooms/486777696",
+  "rps": 5656.5,
+  "secs": 4.0,
+  "statuses": {
+    "200": 22641
+  },
+  "cpu_us_per_request": {
+    "app": 553.4,
+    "solidb": 59.2,
+    "solikv": 2.2
+  }
+}
