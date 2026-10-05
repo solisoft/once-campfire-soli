@@ -50,11 +50,18 @@ Then, from the app's checkout:
 
 ```sh
 git submodule update --init
-bin/build-assets                       # public/assets and the asset manifests
+bin/build-assets                       # copies the frontend into public/assets (needs python3)
 cp .env.example .env                   # set SECRET_KEY_BASE and SOLI_SESSION_SECRET
 soli db:migrate up
 soli serve . --port 5011 --workers 8   # add --dev for hot reload
 ```
+
+`bin/build-assets` does what `rails assets:precompile` does for the reference: it copies the
+frontend's CSS, JavaScript, images and sounds from `reference/`, `vendor/` and `overrides/` into
+`public/assets` under digested names (`application-1a2b3c4d.css`). `public/assets` is not in git, so
+run it after a clone, and again whenever `overrides/` or the submodules change. It also rewrites
+`app/helpers/asset_manifest.sl` and `app/services/asset_manifest.sl`, the tables that turn
+`application.css` into its digested path.
 
 Open `/first_run` to create the account. Behind Soli Proxy, `app.infos` serves it in production mode.
 
