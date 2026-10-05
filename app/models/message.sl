@@ -51,7 +51,8 @@ class Message < Model
   # message, but nothing reads that time beyond whether it is set.
   static def create_message(room, creator, body_html, attachment, client_message_id, base_url, members)
     now = Clock.now
-    plain = attachment.nil? ? RichText.plain_text(body_html) : ""
+    analyzed = attachment.nil? ? RichText.analyze(body_html) : {"plain": "", "mentions": []}
+    plain = analyzed["plain"]
     plain = attachment["filename"] if plain.blank? && !attachment.nil?
     doc = {
       "room_id": room["_key"], "creator_id": creator["_key"],
@@ -63,7 +64,7 @@ class Message < Model
     rk = room["_key"]
     ck = creator["_key"]
     cutoff = now - Membership.CONNECTION_TTL_MS
-    mentioned = attachment.nil? ? RichText.mentioned_user_keys(body_html) : []
+    mentioned = analyzed["mentions"]
     to_mark = []
     push_to = []
     for m in members

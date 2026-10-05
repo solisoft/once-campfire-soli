@@ -5,6 +5,11 @@ for m in Message.all
   attachment = doc["attachment"]
   plain = attachment.nil? ? RichText.plain_text(doc["body"]) : (attachment["filename"] ?? "")
   fields = {"plain_text": plain, "search_text": Stemmer.index_text(plain), "html": nil, "html_key": nil}
+  if !attachment.nil? && attachment["preview_blob_id"].nil? && Attachments.video?(attachment["content_type"])
+    data = Attachments.db.get_blob(Attachments.COLLECTION, attachment["blob_id"])
+    Media.video_preview({"data": data, "filename": attachment["filename"]}, attachment)
+    fields["attachment"] = attachment
+  end
   if !attachment.nil? && attachment["variant_blob_id"].nil? && Attachments.variable?(attachment["content_type"])
     data = Attachments.db.get_blob(Attachments.COLLECTION, attachment["blob_id"])
     image = Image.from_buffer(data) rescue nil

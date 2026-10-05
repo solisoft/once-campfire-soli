@@ -32,6 +32,8 @@ class ApplicationController < Controller
 
   # TrackedRoomVisit
   def _remember_last_room_visited
+    return nil if cookies["last_room"] == @room["_key"]
+
     set_cookie("last_room", @room["_key"], {"max_age": Authentication.TWENTY_YEARS})
   end
 

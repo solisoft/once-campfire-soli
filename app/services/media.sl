@@ -11,9 +11,10 @@ class Media
     probe = System.run_sync(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", input]) rescue nil
     unless probe.nil?
       dims = str(probe["stdout"] ?? "").trim.split(",")
-      if dims.length == 2
-        attachment["width"] = int(dims[0]) rescue nil
-        attachment["height"] = int(dims[1]) rescue nil
+      # Active Storage's video analyzer reports floats; dimensions already known are kept.
+      if dims.length == 2 && attachment["width"].nil?
+        attachment["width"] = dims[0].to_f rescue nil
+        attachment["height"] = dims[1].to_f rescue nil
       end
     end
     System.run_sync(["ffmpeg", "-y", "-v", "error", "-i", input, "-vframes", "1", "-vf", "scale='min(1200,iw)':'min(800,ih)':force_original_aspect_ratio=decrease", output]) rescue nil

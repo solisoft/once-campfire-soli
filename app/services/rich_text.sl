@@ -7,7 +7,9 @@
 class RichText
   static MENTION_TYPE: String = "application/vnd.campfire.mention"
   static OPENGRAPH_TYPE: String = "application/vnd.actiontext.opengraph-embed"
-  static TOKEN: String = "<!--[\\s\\S]*?-->|<[a-zA-Z/!][^\"'>]*(?:\"[^\"]*\"[^\"'>]*|'[^']*'[^\"'>]*)*>|[^<]+|<"
+  # Tags as an HTML5 tokenizer reads them: attribute names may hold quotes (a malformed
+  # content="<span class=" mention"="" is the attribute content, then one named mention").
+  static TOKEN: String = "<!--[\\s\\S]*?-->|<![^>]*>|</[a-zA-Z][^>]*>|<[a-zA-Z][^>\"']*(?:(?:\"[^\"]*\"|'[^']*'|[\"'])[^>\"']*)*>|[^<]+|<"
 
   # SanitizeTags::ALLOWED_TAGS, as Action Text's and auto_link's sanitizers leave them.
   static ALLOWED_TAGS: Array = [
@@ -41,8 +43,8 @@ class RichText
     attrs = {}
     return attrs if m.nil?
 
-    for a in Regex.find_all("[a-zA-Z_:][-a-zA-Z0-9_:.]*(?:\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s\"'=<>`]+))?", m["rest"])
-      parts = Regex.capture("^(?P<name>[a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\\s*=\\s*(?:\"(?P<dq>[^\"]*)\"|'(?P<sq>[^']*)'|(?P<bare>[^\\s\"'=<>`]+)))?$", a["match"])
+    for a in Regex.find_all("[^\\s>/=]+(?:\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s>]*))?", m["rest"])
+      parts = Regex.capture("^(?P<name>[^\\s>/=]+)(?:\\s*=\\s*(?:\"(?P<dq>[^\"]*)\"|'(?P<sq>[^']*)'|(?P<bare>[^\\s>]*)))?$", a["match"])
       next if parts.nil?
 
       value = parts["dq"] ?? parts["sq"] ?? parts["bare"] ?? ""
@@ -80,6 +82,8 @@ class RichText
 
   # Action Text attachments, rendered with their partials.
   static def render_attachments(body)
+    return body unless body.contains("<action-text-attachment")
+
     out = ""
     tokens = RichText.tokens(body)
     i = 0
@@ -126,13 +130,29 @@ class RichText
     user = User.from_attachable_sgid(sgid)
     return user unless user.nil?
 
-    data = sgid.split("--")[0]
-    decoded = Base64.decode(data) rescue nil
-    decoded = Base64.urlsafe_decode(data) rescue nil unless decoded.is_a?("string")
-    return nil unless decoded.is_a?("string")
+    decoded = RichText.decode_base64(sgid.split("--")[0])
+    return nil if decoded.nil?
 
-    m = Regex.capture("gid://campfire/User/(?P<id>[0-9A-Za-z-]+)", decoded)
+    # Rails 7 signed the GlobalID inside a Marshal dump ("_rails": {"message": …}): find it in there.
+    envelope = JSON.parse(decoded) rescue nil
+    message = envelope.is_a?("hash") ? envelope.dig("_rails", "message") : nil
+    decoded = RichText.decode_base64(message) ?? decoded unless message.nil?
+
+    m = Regex.capture("gid://campfire/User/(?P<id>[0-9]+)", decoded)
     m.nil? ? nil : User.find_hash(m["id"])
+  end
+
+  # Base64 (strict or URL-safe) to a string; binary bytes keep their printable ASCII.
+  static def decode_base64(data)
+    return nil if data.blank?
+
+    decoded = Base64.decode(data) rescue nil
+    decoded = Base64.urlsafe_decode(data) rescue nil if decoded.nil?
+    return decoded if decoded.is_a?("string")
+    return nil unless decoded.is_a?("array")
+
+    printable = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    decoded.map { |b| b >= 32 && b < 127 ? printable[b - 32] : " " }.join("")
   end
 
   # Allowed tags keep their allowed attributes; dropped tags vanish with their content;
@@ -152,7 +172,7 @@ class RichText
       next if t.starts_with("<!--")
 
       unless RichText.tag?(t)
-        out += t == "<" ? "&lt;" : t
+        out += t == "<" ? "&lt;" : RichText.escape_text(html_unescape(t))
         next
       end
 
@@ -181,9 +201,18 @@ class RichText
       next unless RichText.ALLOWED_ATTRIBUTES.include?(name)
       next if (name == "href" || name == "src" || name == "cite") && !RichText.safe_url?(value)
 
-      out += " " + name + "=\"" + html_escape(value) + "\""
+      out += " " + name + "=\"" + RichText.escape_attribute(value) + "\""
     end
     out
+  end
+
+  # How Nokogiri serializes after sanitizing: text escapes &, < and >; attributes & and ".
+  static def escape_text(text)
+    text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+  end
+
+  static def escape_attribute(value)
+    value.replace("&", "&amp;").replace("\"", "&quot;")
   end
 
   static def safe_url?(url)
@@ -194,6 +223,8 @@ class RichText
 
   # rails_autolink over the text outside links: http(s) and www. URLs, target="_blank".
   static def auto_link(html)
+    return html unless html.contains("http") || html.contains("www.")
+
     out = ""
     in_link = 0
     for t in RichText.tokens(html)
@@ -235,13 +266,16 @@ class RichText
   # ContentFilters::RemoveSoloUnfurledLinkText: a message that is only the link it unfurled
   # shows just the preview.
   static def remove_solo_unfurled_link_text(html, body)
+    return html unless body.contains(RichText.OPENGRAPH_TYPE)
+
     tokens = RichText.tokens(body)
     embeds = tokens.filter { |t| RichText.attachment_open?(t) && (RichText.attributes(t)["content-type"] ?? "").contains(RichText.OPENGRAPH_TYPE) }
     return html unless embeds.length == 1
 
     embed = Opengraph.embed_from_attributes(RichText.attributes(embeds[0]))
     return html if embed.nil? || embed["href"].nil?
-    return html unless Opengraph.normalize_tweet_url(embed["href"]) == Opengraph.normalize_tweet_url(RichText.plain_text(body))
+    # to_plain_text only drops trailing newlines: a space after the paragraph keeps the link.
+    return html unless Opengraph.normalize_tweet_url(embed["href"]) == Opengraph.normalize_tweet_url(RichText.analyze(body)["unstripped"])
 
     divs = tokens.filter { |t| RichText.tag?(t) && !RichText.closing?(t) && RichText.tag_name(t) == "div" }
     if divs.length > 0
@@ -275,26 +309,20 @@ class RichText
 
   # Message::Mentionee: the users a body mentions.
   static def mentioned_user_keys(body)
-    keys = []
-    for t in RichText.tokens(body ?? "")
-      next unless RichText.attachment_open?(t)
-
-      attrs = RichText.attributes(t)
-      next if (attrs["content-type"] ?? "").contains(RichText.OPENGRAPH_TYPE)
-
-      user = RichText.user_from_sgid(attrs["sgid"])
-      keys.push(user["_key"]) unless user.nil?
-    end
-    keys.uniq
+    RichText.analyze(body)["mentions"]
   end
-
-  # --- plain text ------------------------------------------------------------------------
 
   # ActionText::Content#to_plain_text (mentions as "@Name", previews as nothing).
   static def plain_text(body)
-    return "" if body.nil?
+    RichText.analyze(body)["plain"]
+  end
+
+  # The plain text and the mentioned users' keys in one pass, each sgid resolved once.
+  static def analyze(body)
+    return {"plain": "", "mentions": []} if body.nil?
 
     out = ""
+    mentions = []
     tokens = RichText.tokens(body)
     i = 0
     while i < tokens.length
@@ -303,7 +331,10 @@ class RichText
         attrs = RichText.attributes(t)
         unless (attrs["content-type"] ?? "").contains(RichText.OPENGRAPH_TYPE)
           user = RichText.user_from_sgid(attrs["sgid"])
-          out += "@" + user["name"] unless user.nil?
+          unless user.nil?
+            out += "@" + user["name"]
+            mentions.push(user["_key"]) unless mentions.include?(user["_key"])
+          end
         end
         i += 1
         while i < tokens.length && !RichText.attachment_close?(tokens[i])
@@ -323,7 +354,8 @@ class RichText
       end
       i += 1
     end
-    Regex.replace_all("\\n{3,}", out, "\n\n").trim
+    {"plain": Regex.replace_all("\\n{3,}", out, "\n\n").trim, "mentions": mentions,
+     "unstripped": Regex.replace("\\n+$", out, "")}
   end
 
   # --- editing ---------------------------------------------------------------------------

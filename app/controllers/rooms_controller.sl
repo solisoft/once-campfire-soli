@@ -22,25 +22,39 @@ class RoomsController < ApplicationController
 
     @room = page["room"]
     @_remember_last_room_visited
+    base = RoomPage.base_url(req)
+    account = req["account"]
+    agent = req["headers"]["user-agent"] ?? ""
+    sig = json_stringify([base, account["updated_at"], account["join_code"], @_current_user["updated_at"], @_current_user["role"],
+                          @room["name"], @room["type"], page["display_name"], page["invitation"], Crypto.md5(agent)])
+    content_sig = json_stringify([page["sig"], page["keys"]])
+    csrf = csrf_token()
+
+    # The whole response, kept per user and room while nothing it shows has changed.
+    full_name = "room_full:" + @_current_user_key + ":" + @room["_key"]
+    full_key = sig + content_sig + csrf + str(@room["updated_at"])
+    cacheable = at_message.nil? && !page["html"].nil? && !session_has("flash_notice") && !session_has("flash_alert")
+    if cacheable
+      full = PageCache.get(full_name)
+      return full["response"] if !full.nil? && full["key"] == full_key
+    end
+
     @page_title = page["display_name"]
     @body_class = "sidebar"
     @room_page = page
     @current_user = Present.user(@_current_user)
-    base = RoomPage.base_url(req)
     @messages_stream = Cable.signed_stream_name("room:" + @room["_key"] + ":messages")
     @room_page_url = base + "/rooms/" + @room["_key"] + "/messages"
     @room_refresh_url = base + "/rooms/" + @room["_key"] + "/refresh"
     @edit_room_path = RoomPage.edit_path(@room)
-    @join_url = base + "/join/" + req["account"]["join_code"]
+    @join_url = base + "/join/" + account["join_code"]
     @join_qr_path = "/qr_code/" + Base64.urlsafe_encode(@join_url)
-    account = req["account"]
-    agent = req["headers"]["user-agent"] ?? ""
     @notification_help_html = NotificationHelp.cached_html(req, agent)
-    sig = json_stringify([base, account["updated_at"], account["join_code"], @_current_user["updated_at"], @_current_user["role"],
-                          @room["name"], @room["type"], page["display_name"], page["invitation"], Crypto.md5(agent)])
-    @_render_cached_page("rooms/show", "room_show:" + @_current_user_key + ":" + @room["_key"], sig, {
-      "messages": RoomPage.messages_html(page, base), "csrf": csrf_token(), "loaded_at": str(@room["updated_at"])
-    }, json_stringify([page["sig"], page["keys"]]))
+    response = @_render_cached_page("rooms/show", "room_show:" + @_current_user_key + ":" + @room["_key"], sig, {
+      "messages": RoomPage.messages_html(page, base), "csrf": csrf, "loaded_at": str(@room["updated_at"])
+    }, content_sig)
+    PageCache.set_bounded(full_name, {"key": full_key, "response": response}, "room_full", 64) if cacheable
+    response
   end
 
   # DELETE /rooms/:id

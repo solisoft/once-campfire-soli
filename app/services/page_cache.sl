@@ -11,4 +11,19 @@ class PageCache
     table = I18n.cached_table("__page_cache") ?? I18n.cache_table("__page_cache", {})
     table[name] = value
   end
+
+  # set, keeping at most limit entries of group: the oldest is dropped first.
+  static def set_bounded(name, value, group, limit)
+    table = I18n.cached_table("__page_cache") ?? I18n.cache_table("__page_cache", {})
+    order_name = "__order:" + group
+    order = table[order_name] ?? []
+    order = order.filter { |n| n != name } unless table[name].nil?
+    order.push(name)
+    while order.length > limit
+      table[order[0]] = nil
+      order = order.drop(1)
+    end
+    table[order_name] = order
+    table[name] = value
+  end
 end
