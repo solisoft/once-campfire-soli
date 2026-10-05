@@ -19,7 +19,34 @@ Active Storage tree) and shows how a migration would go.
 
 ## Running it
 
-Soli 2.15+, SoliDB 2.2+ and SoliKV, then:
+Soli 2.15+, SoliDB 2.2+ and SoliKV. Each one has an installer that puts the latest release binary
+in `~/.local/bin` (add `--system` after `sh -s --` for `/usr/local/bin`), on Linux and macOS:
+
+```sh
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/solisoft/solidb/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/solisoft/kv/main/install.sh | sh
+soli --version && solidb --version && solikv --version
+```
+
+`soli update` and `solidb update` upgrade in place later.
+
+Start SoliDB and SoliKV in their own directory, not the app's: SoliDB reads a `.env` in its working
+directory, and the app's `SOLIDB_HOST` (a URL) would become its bind address.
+
+```sh
+mkdir -p ~/campfire-data && cd ~/campfire-data
+SOLIDB_ADMIN_PASSWORD=admin solidb --port 6745 --data-dir ./solidb --daemon
+solikv --bind 127.0.0.1 --port 6379 --rest-port 0 --dir ./solikv &
+```
+
+`SOLIDB_ADMIN_PASSWORD` sets the admin password when the data directory is first created, to match
+`SOLIDB_PASSWORD` in `.env.example`; without it SoliDB generates one and writes it to
+`solidb/.admin_password`. SoliKV listens on 127.0.0.1 only, so the app points at that address
+(`SOLIKV_RESP_HOST`): `localhost` can resolve to `::1`. The database itself is created by the first
+`soli db:migrate`.
+
+Then, from the app's checkout:
 
 ```sh
 git submodule update --init
