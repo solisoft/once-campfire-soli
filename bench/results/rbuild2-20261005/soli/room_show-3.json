@@ -5,23 +5,23 @@
   "gzip": true,
   "invalid_responses": 0,
   "latency": {
-    "max_ms": 2.825,
-    "mean_ms": 0.96,
-    "n": 66274,
-    "p50_ms": 0.948,
-    "p90_ms": 1.224,
-    "p99_ms": 1.535
+    "max_ms": 2.331,
+    "mean_ms": 0.66,
+    "n": 96954,
+    "p50_ms": 0.643,
+    "p90_ms": 0.86,
+    "p99_ms": 1.172
   },
-  "ok": 66274,
+  "ok": 96954,
   "path": "/rooms/486777696",
-  "rps": 16564.2,
+  "rps": 24234.2,
   "secs": 4.0,
   "statuses": {
-    "200": 66274
+    "200": 96954
   },
   "cpu_us_per_request": {
-    "app": 195.6,
-    "solidb": 16.9,
-    "solikv": 0.6
+    "app": 119.7,
+    "solidb": 13.7,
+    "solikv": 0.3
   }
 }

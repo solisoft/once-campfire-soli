@@ -5,23 +5,23 @@
   "gzip": true,
   "invalid_responses": 0,
   "latency": {
-    "max_ms": 1.038,
-    "mean_ms": 0.26,
-    "n": 241297,
-    "p50_ms": 0.26,
-    "p90_ms": 0.339,
-    "p99_ms": 0.412
+    "max_ms": 0.703,
+    "mean_ms": 0.25,
+    "n": 258951,
+    "p50_ms": 0.243,
+    "p90_ms": 0.315,
+    "p99_ms": 0.381
   },
-  "ok": 241297,
+  "ok": 258951,
   "path": "/users/me/sidebar",
-  "rps": 60320.2,
+  "rps": 64733.4,
   "secs": 4.0,
   "statuses": {
-    "200": 241297
+    "200": 258951
   },
   "cpu_us_per_request": {
-    "app": 46.1,
-    "solidb": 10.0,
+    "app": 43.1,
+    "solidb": 9.0,
     "solikv": 0.0
   }
 }

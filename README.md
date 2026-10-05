@@ -42,30 +42,31 @@ siblings idle) for itself and everything it uses: Soli with SoliDB and SoliKV, R
 SQLite. The load generator gets CPUs 12–15. 16 concurrent clients, 4 s per run after a 1 s warm-up,
 three runs, direct listeners without compression. Every thread's affinity was checked before measuring.
 Rust is [once-campfire-rust](https://github.com/basecamp/once-campfire-rust) `64f8635`, built from its
-own Dockerfile.
+own Dockerfile. Soli 2.15.3, SoliDB 2.2.0 and SoliKV built from their sources with their manifests'
+release profiles (fat LTO, one codegen unit), not a build server's faster-to-compile ThinLTO.
 
 | Requests/sec, median of 3 (range) | Rust | Soli | Soli / Rust |
 |---|---:|---:|---:|
-| Room page | 32,212 (31,819–36,072) | 16,564 (16,555–16,655) | 0.51× |
-| Messages page | 33,599 (32,828–38,404) | 23,131 (22,918–23,180) | 0.69× |
-| Sidebar | 34,609 (34,564–35,309) | 60,063 (59,965–60,320) | 1.74× |
-| Search | 36,224 (35,670–36,861) | 28,470 (28,353–28,640) | 0.79× |
-| Post a message | 4,333 (4,308–4,356) | 6,057 (5,954–6,273) | 1.40× |
+| Room page | 32,212 (31,819–36,072) | 23,910 (23,863–24,234) | 0.74× |
+| Messages page | 33,599 (32,828–38,404) | 24,132 (24,062–24,284) | 0.72× |
+| Sidebar | 34,609 (34,564–35,308) | 64,608 (64,534–64,733) | 1.87× |
+| Search | 36,224 (35,670–36,861) | 30,074 (29,962–30,314) | 0.83× |
+| Post a message | 4,333 (4,308–4,356) | 6,463 (6,346–6,774) | 1.49× |
 
 | p99 latency / CPU per request | Rust | Soli (app + SoliDB + SoliKV) |
 |---|---:|---:|
-| Room page | 1.40 ms / 91 µs | 1.54 ms / 213 µs |
-| Messages page | 1.24 ms / 78 µs | 1.11 ms / 140 µs |
-| Sidebar | 1.36 ms / 90 µs | 0.41 ms / 56 µs |
-| Search | 0.96 ms / 85 µs | 0.85 ms / 125 µs |
-| Post a message | 0.31 ms / 234 µs | 4.85 ms / 564 µs |
+| Room page | 1.40 ms / 91 µs | 1.19 ms / 134 µs |
+| Messages page | 1.24 ms / 78 µs | 1.07 ms / 134 µs |
+| Sidebar | 1.36 ms / 90 µs | 0.38 ms / 52 µs |
+| Search | 0.96 ms / 85 µs | 0.80 ms / 118 µs |
+| Post a message | 0.31 ms / 234 µs | 4.34 ms / 528 µs |
 
 The room page is 420 KB of HTML (every message carries its actions menu), as it is in Rails.
 
 | Memory and startup | Rust | Soli |
 |---|---:|---:|
-| Idle, PSS | 44 MiB | 278 MiB (app 192, SoliDB 60, SoliKV 27) |
-| Peak during the five workloads, PSS | 137 MiB | 402 MiB (app 224, SoliDB 164, SoliKV 32) |
+| Idle, PSS | 44 MiB | 253 MiB (app 172, SoliDB 56, SoliKV 25) |
+| Peak during the five workloads, PSS | 137 MiB | 405 MiB (app 242, SoliDB 165, SoliKV 30) |
 | Cold start until `/up` answers | 62 ms (container start included) | 101 ms (SoliDB and SoliKV already up) |
 
 Soli's app memory is mostly its eight workers, each with its own interpreter, loaded code and page
@@ -79,7 +80,8 @@ What the numbers rest on:
   costs a signature check, not a transfer.
 - **Page chrome is rendered once per worker** with markers where the per-request values go (messages,
   CSRF token, the room's timestamp), then reassembled with string joins (`_render_cached_page`). The
-  sidebar re-renders only when SoliDB says its data changed.
+  sidebar re-renders only when SoliDB says its data changed. A room page's whole response is kept per
+  user and room (64 per worker) until anything it shows changes.
 - **Posting is one SoliDB statement**: the message goes in with its HTML, the room is touched, and only
   the members who turn unread are written. Push notifications are queued in SoliKV and delivered by a
   job every couple of seconds.
@@ -89,6 +91,8 @@ What the numbers rest on:
   reads its in-process SQLite on every request instead.
 - **SoliDB's native driver** (`SOLI_DB_DRIVER=1`, MessagePack over pooled connections) instead of
   HTTP/JSON.
+- **Only indexes the planner uses.** SoliDB serves a room's pages from the `room_id` hash index and
+  sorts in memory; it never uses a compound `(room_id, created_at)` index, so that one is gone.
 
 These figures compare two implementations on one machine. The reference README's table was measured on
 another (an AMD Ryzen AI MAX+ 395) and cannot be read against them; a run on a slower laptop is in

@@ -5,23 +5,23 @@
   "gzip": true,
   "invalid_responses": 0,
   "latency": {
-    "max_ms": 1.488,
-    "mean_ms": 0.56,
-    "n": 114575,
-    "p50_ms": 0.55,
-    "p90_ms": 0.702,
-    "p99_ms": 0.848
+    "max_ms": 1.252,
+    "mean_ms": 0.53,
+    "n": 121269,
+    "p50_ms": 0.519,
+    "p90_ms": 0.661,
+    "p99_ms": 0.795
   },
-  "ok": 114575,
+  "ok": 121269,
   "path": "/searches?q=coffee",
-  "rps": 28639.7,
+  "rps": 30313.6,
   "secs": 4.0,
   "statuses": {
-    "200": 114575
+    "200": 121269
   },
   "cpu_us_per_request": {
-    "app": 109.2,
-    "solidb": 14.5,
+    "app": 103.6,
+    "solidb": 13.4,
     "solikv": 0.2
   }
 }
