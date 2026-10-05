@@ -6,11 +6,11 @@
 #
 #   bench/run-rust --seed SEED_DIR --loadgen PATH --image campfire-rust:bench
 #                  [--cpus 8-11] [--client-cpus 12-15] [--secs 4] [--conc 16] [--reps 2]
-#                  [--engine podman] [--out DIR]
+#                  [--engine podman] [--gzip 1] [--only "room_show …"] [--out DIR]
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-SEED="" LOADGEN="" IMAGE=campfire-rust:bench CPUS=8-11 CLIENT_CPUS=12-15 SECS=4 CONC=16 REPS=2 ENGINE=podman
+SEED="" LOADGEN="" IMAGE=campfire-rust:bench CPUS=8-11 CLIENT_CPUS=12-15 SECS=4 CONC=16 REPS=2 ENGINE=podman GZIP=1 ONLY="room_show messages_page sidebar search post_message"
 OUT="$ROOT/bench/results/rust-$(date +%Y%m%d-%H%M%S)"
 PORT=13300 PUBLIC_PORT=18380
 while [ $# -gt 0 ]; do
@@ -24,6 +24,8 @@ while [ $# -gt 0 ]; do
     --conc) CONC=$2; shift 2 ;;
     --reps) REPS=$2; shift 2 ;;
     --engine) ENGINE=$2; shift 2 ;;
+    --gzip) GZIP=$2; shift 2 ;;
+    --only) ONLY=$2; shift 2 ;;
     --out) OUT=$2; shift 2 ;;
     *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 1 ;;
   esac
@@ -65,10 +67,10 @@ done
   echo "image: $IMAGE $("$ENGINE" image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null | cut -c1-19)"
   echo "seed: $(sha256sum "$SEED/db/production.sqlite3" | cut -d' ' -f1)"
   echo "workload: secs=$SECS conc=$CONC reps=$REPS"
-  echo "cold start until /up: $COLD_START_MS ms"
+  echo "accept-encoding: $([ "$GZIP" = 0 ] && echo identity || echo gzip)"
   echo "cold start until /up: $COLD_START_MS ms"
 } > "$OUT/env.txt"
 
 "$ROOT/bench/measure" --base "http://127.0.0.1:$PORT" --seed "$SEED" --loadgen "$LOADGEN" --out "$OUT" \
-  --pids "rust:$PID" --client-cpus "$CLIENT_CPUS" --secs "$SECS" --conc "$CONC" --reps "$REPS"
+  --pids "rust:$PID" --client-cpus "$CLIENT_CPUS" --secs "$SECS" --conc "$CONC" --reps "$REPS" --gzip "$GZIP" --only "$ONLY"
 echo "bench: results in ${OUT#"$ROOT"/}" >&2

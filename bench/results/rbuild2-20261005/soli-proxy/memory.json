@@ -1,0 +1,57 @@
+{
+  "idle": {
+    "app": {
+      "rss": 182.1,
+      "anon": 158.2,
+      "pss": 180.0
+    },
+    "solidb": {
+      "rss": 62.3,
+      "anon": 32.4,
+      "pss": 59.0
+    },
+    "solikv": {
+      "rss": 28.7,
+      "anon": 20.6,
+      "pss": 26.8
+    },
+    "proxy": {
+      "rss": 18.2,
+      "anon": 5.8,
+      "pss": 16.4
+    }
+  },
+  "peak": {
+    "app": {
+      "rss": 241.6,
+      "anon": 217.1,
+      "pss": 239.5
+    },
+    "solidb": {
+      "rss": 162.2,
+      "anon": 131.4,
+      "pss": 158.8
+    },
+    "solikv": {
+      "rss": 31.5,
+      "anon": 23.3,
+      "pss": 29.6
+    },
+    "proxy": {
+      "rss": 44.4,
+      "anon": 31.7,
+      "pss": 42.4
+    }
+  },
+  "idle_total": {
+    "rss": 291.3,
+    "anon": 217.0,
+    "pss": 282.1
+  },
+  "peak_total": {
+    "rss": 442.1,
+    "anon": 365.9,
+    "pss": 432.6
+  },
+  "samples": 709
+}

@@ -5,13 +5,17 @@
 #
 #   bench/measure --base http://127.0.0.1:PORT --seed SEED_DIR --loadgen PATH --out DIR
 #                 [--pids "app:PID solidb:PID …"] [--client-cpus 12-15] [--secs 4] [--conc 16]
-#                 [--reps 2] [--only "room_show sidebar …"]
+#                 [--reps 2] [--only "room_show sidebar …"] [--gzip 1]
+#
+# Workloads: room_show messages_page sidebar search post_message (the default), and up (the
+# health check, for the framework's floor).
 #
 # --pids names the server processes whose CPU time (user + system, all threads) is divided by
-# the requests served, per workload.
+# the requests served, per workload; the system part is also given alone (NAME.sys).
+# --gzip 1 (the default, like the reference harness) sends Accept-Encoding: gzip; 0 sends identity.
 set -euo pipefail
 
-BASE="" SEED="" LOADGEN="" OUT="" PIDS="" CLIENT_CPUS=12-15 SECS=4 CONC=16 REPS=2
+BASE="" SEED="" LOADGEN="" OUT="" PIDS="" CLIENT_CPUS=12-15 SECS=4 CONC=16 REPS=2 GZIP=1
 ONLY="room_show messages_page sidebar search post_message"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -25,6 +29,7 @@ while [ $# -gt 0 ]; do
     --conc) CONC=$2; shift 2 ;;
     --reps) REPS=$2; shift 2 ;;
     --only) ONLY=$2; shift 2 ;;
+    --gzip) GZIP=$2; shift 2 ;;
     *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 1 ;;
   esac
 done
@@ -32,10 +37,11 @@ done
 mkdir -p "$OUT"
 
 lg() { taskset -c "$CLIENT_CPUS" "$LOADGEN" "$@"; }
-# name=cpu-seconds for every --pids entry (user + system, all threads).
+# name=cpu-seconds (user + system, all threads) and name.sys=system cpu-seconds for every
+# --pids entry.
 cpus() {
   for entry in $PIDS; do
-    awk -v n="${entry%%:*}" '{ printf "%s=%.3f ", n, ($14 + $15) / 100 }' "/proc/${entry#*:}/stat"
+    awk -v n="${entry%%:*}" '{ printf "%s=%.3f %s.sys=%.3f ", n, ($14 + $15) / 100, n, $15 / 100 }' "/proc/${entry#*:}/stat"
   done
 }
 labels() { python3 -c "import json,sys; print(json.load(open('$SEED/labels.json'))['$1'])"; }
@@ -51,6 +57,7 @@ declare -A ROUTES=(
   [sidebar]="--path /users/me/sidebar"
   [search]="--path /searches?q=coffee"
   [post_message]="--post-room $(labels rooms.hq) --csrf $CSRF"
+  [up]="--path /up"
 )
 
 # Memory of the --pids processes (kB), one line per sample: VmRSS / RssAnon / Pss.
@@ -71,10 +78,10 @@ trap 'kill $SAMPLER 2>/dev/null || true' EXIT
 for rep in $(seq "$REPS"); do
   for name in $ONLY; do
     # shellcheck disable=SC2086
-    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc 1 --duration 1 > /dev/null
+    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --gzip "$GZIP" --conc 1 --duration 1 > /dev/null
     before=$(cpus)
     # shellcheck disable=SC2086
-    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --conc "$CONC" --duration "$SECS" > "$OUT/$name-$rep.json"
+    lg http --base "$BASE" --cookie "$COOKIE" ${ROUTES[$name]} --gzip "$GZIP" --conc "$CONC" --duration "$SECS" > "$OUT/$name-$rep.json"
     after=$(cpus)
     python3 - "$OUT/$name-$rep.json" "$name" "$rep" "$before" "$after" <<'EOF'
 import json, sys

@@ -1,0 +1,26 @@
+{
+  "avg_bytes": 149526,
+  "conc": 16,
+  "errors": 0,
+  "gzip": false,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 3.251,
+    "mean_ms": 0.52,
+    "n": 123504,
+    "p50_ms": 0.47,
+    "p90_ms": 0.789,
+    "p99_ms": 1.159
+  },
+  "ok": 123504,
+  "path": "/searches?q=coffee",
+  "rps": 30873.4,
+  "secs": 4.0,
+  "statuses": {
+    "200": 123504
+  },
+  "cpu_us_per_request": {
+    "rust": 94.8,
+    "rust.sys": 24.5
+  }
+}

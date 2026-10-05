@@ -1,0 +1,30 @@
+{
+  "avg_bytes": 421131,
+  "conc": 16,
+  "errors": 0,
+  "gzip": false,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 3.521,
+    "mean_ms": 0.67,
+    "n": 95100,
+    "p50_ms": 0.654,
+    "p90_ms": 0.877,
+    "p99_ms": 1.195
+  },
+  "ok": 95100,
+  "path": "/rooms/486777696",
+  "rps": 23770.7,
+  "secs": 4.0,
+  "statuses": {
+    "200": 95100
+  },
+  "cpu_us_per_request": {
+    "app": 121.3,
+    "app.sys": 36.5,
+    "solidb": 14.0,
+    "solidb.sys": 4.2,
+    "solikv": 0.3,
+    "solikv.sys": 0.2
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "avg_bytes": 151415,
+  "conc": 16,
+  "errors": 0,
+  "gzip": false,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 1.322,
+    "mean_ms": 0.54,
+    "n": 118377,
+    "p50_ms": 0.532,
+    "p90_ms": 0.678,
+    "p99_ms": 0.82
+  },
+  "ok": 118377,
+  "path": "/searches?q=coffee",
+  "rps": 29590.9,
+  "secs": 4.0,
+  "statuses": {
+    "200": 118377
+  },
+  "cpu_us_per_request": {
+    "app": 106.0,
+    "app.sys": 18.2,
+    "solidb": 13.4,
+    "solidb.sys": 3.7,
+    "solikv": 0.2,
+    "solikv.sys": 0.1
+  }
+}

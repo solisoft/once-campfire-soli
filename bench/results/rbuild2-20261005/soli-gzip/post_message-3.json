@@ -1,0 +1,30 @@
+{
+  "avg_bytes": 1960,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 16.911,
+    "mean_ms": 2.79,
+    "n": 22962,
+    "p50_ms": 2.715,
+    "p90_ms": 3.271,
+    "p99_ms": 5.755
+  },
+  "ok": 22962,
+  "path": "POST /rooms/201306877/messages",
+  "rps": 5737.2,
+  "secs": 4.0,
+  "statuses": {
+    "200": 22962
+  },
+  "cpu_us_per_request": {
+    "app": 321.8,
+    "app.sys": 30.0,
+    "solidb": 269.1,
+    "solidb.sys": 37.0,
+    "solikv": 10.0,
+    "solikv.sys": 4.4
+  }
+}

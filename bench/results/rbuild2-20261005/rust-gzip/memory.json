@@ -1,0 +1,27 @@
+{
+  "idle": {
+    "rust": {
+      "rss": 44.1,
+      "anon": 23.5,
+      "pss": 44.1
+    }
+  },
+  "peak": {
+    "rust": {
+      "rss": 200.0,
+      "anon": 178.9,
+      "pss": 200.0
+    }
+  },
+  "idle_total": {
+    "rss": 44.1,
+    "anon": 23.5,
+    "pss": 44.1
+  },
+  "peak_total": {
+    "rss": 200.0,
+    "anon": 178.9,
+    "pss": 200.0
+  },
+  "samples": 881
+}

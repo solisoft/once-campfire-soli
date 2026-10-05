@@ -1,0 +1,30 @@
+{
+  "avg_bytes": 2258,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 0.687,
+    "mean_ms": 0.25,
+    "n": 259718,
+    "p50_ms": 0.242,
+    "p90_ms": 0.314,
+    "p99_ms": 0.382
+  },
+  "ok": 259718,
+  "path": "/users/me/sidebar",
+  "rps": 64924.4,
+  "secs": 4.0,
+  "statuses": {
+    "200": 259718
+  },
+  "cpu_us_per_request": {
+    "app": 42.9,
+    "app.sys": 7.4,
+    "solidb": 9.0,
+    "solidb.sys": 2.9,
+    "solikv": 0.0,
+    "solikv.sys": 0.0
+  }
+}

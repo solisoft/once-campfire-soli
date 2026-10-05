@@ -1,0 +1,26 @@
+{
+  "avg_bytes": 1992,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 135.679,
+    "mean_ms": 1.86,
+    "n": 34454,
+    "p50_ms": 1.638,
+    "p90_ms": 2.251,
+    "p99_ms": 4.403
+  },
+  "ok": 34454,
+  "path": "POST /rooms/201306877/messages",
+  "rps": 8610.0,
+  "secs": 4.0,
+  "statuses": {
+    "200": 34454
+  },
+  "cpu_us_per_request": {
+    "rust": 283.3,
+    "rust.sys": 72.6
+  }
+}
