@@ -67,88 +67,94 @@ Open `/first_run` to create the account. Behind Soli Proxy, `app.infos` serves i
 
 ## Performance
 
-The five HTTP workloads of the reference README and its health check, measured with its harness's load
-generator (`bench/loadgen`: keep-alive clients signed in as david, every response checked for a 200
-and a body) on the same parity seed as the other ports.
+On one machine, with the same data and the same load, Soli serves the room page 15% faster than the
+Rust port, and the sidebar and the health check about twice as fast. The messages page is 9% slower,
+search 22% slower and posting a message 35% slower. Soli's p99 latency is lower on every page. Without
+compression the room page is even (3% slower), and the messages page, search and posting are 10%, 16%
+and 32% slower.
 
-Like the reference harness, the load generator asks for gzip, and Campfire compresses: the reference
-installs `Rack::Deflater` in its `config.ru`, and the Rust port does the same with a cache of
-compressed pieces. This app uses Soli's response compression (`SOLI_COMPRESS=gzip`), which keeps what
-it compressed. A second table repeats every run with `Accept-Encoding: identity`, with neither side
-compressing.
+**How it was measured**
 
-Both apps on rbuild2, an AMD Ryzen 9 9950X, each given CPUs 8–11 (four physical cores, their SMT
-siblings idle) for itself and everything it uses: Soli with SoliDB and SoliKV, Rust with its in-process
-SQLite. The load generator gets CPUs 12–15. 16 concurrent clients, 4 s per run after a 1 s warm-up,
-three runs, direct listeners. Every thread's affinity was checked before measuring, and runs during
-which another job used the machine were thrown away. Rust is
-[once-campfire-rust](https://github.com/basecamp/once-campfire-rust) `64f8635`, built from its own
-Dockerfile. Soli 2.15.3 with its response compression (`SOLI_COMPRESS`, not in a release yet), SoliDB
-2.2.0 and SoliKV, built from their sources with their manifests' release profiles (fat LTO, one
-codegen unit), not a build server's faster-to-compile ThinLTO.
+- **Workloads:** the reference README's five, plus the `/up` health check, driven by its harness's
+  load generator (`bench/loadgen`): 16 keep-alive clients signed in as david, 4 s per run after a 1 s
+  warm-up, three runs. Every response is checked for a 200 and a body. Tables show the median run.
+- **Machine:** rbuild2, an AMD Ryzen 9 9950X. Each app gets CPUs 8–11 (four physical cores, their SMT
+  siblings idle) for itself and everything it uses: Soli with SoliDB and SoliKV, Rust with its
+  in-process SQLite. The load generator gets CPUs 12–15. Runs during which another job used the
+  machine were thrown away.
+- **Versions:** Rust is [once-campfire-rust](https://github.com/basecamp/once-campfire-rust)
+  `64f8635`, built from its own Dockerfile. Soli is `main` at `4b7ef013` (after 2.17.1, unreleased),
+  with SoliDB 2.2.0 and SoliKV 0.4.3, all built with fat LTO and one codegen unit.
+- **Compression:** the load generator asks for gzip, as the reference harness does, and every app
+  compresses: the reference with `Rack::Deflater`, the Rust port with a cache of compressed pieces,
+  this app with Soli's `SOLI_COMPRESS=gzip`, which keeps what it compressed. A second set of tables
+  repeats every run without compression (`Accept-Encoding: identity`).
+- **CPU per request** is user + system time of every process involved (Soli: app, SoliDB and SoliKV;
+  Rust: its container), divided by the requests served.
 
-**gzip** (`Accept-Encoding: gzip`, as the reference harness sends):
+### With gzip
 
-| Requests/sec, median of 3 (range) | Rust | Soli | Soli / Rust |
-|---|---:|---:|---:|
-| Room page | 31,992 (31,974–35,914) | 37,937 (37,866–38,104) | 1.19× |
-| Messages page | 33,538 (32,736–38,945) | 31,906 (31,639–32,078) | 0.95× |
-| Sidebar¹ | 34,539 (33,963–35,374) | 64,924 (53,545–65,041) | 1.88× |
-| Search | 37,159 (36,096–37,222) | 30,751 (30,614–30,784) | 0.83× |
-| Post a message | 9,006 (8,610–9,457) | 5,853 (5,737–6,111) | 0.65× |
-| `/up` | 164,046 (162,911–165,187) | 315,909 (308,014–320,101) | 1.93× |
+| Requests per second | Rust | Soli | Soli vs Rust |
+|---|---:|---:|---|
+| Room page | 32.0k | 36.7k | 15% faster |
+| Messages page | 33.5k | 30.5k | 9% slower |
+| Sidebar¹ | 34.5k | 65.9k | **1.9× faster** |
+| Search | 37.2k | 29.0k | 22% slower |
+| Post a message | 9.0k | 5.9k | 35% slower |
+| `/up` | 164k | 315k | **1.9× faster** |
 
-| p99 latency / CPU per request / body sent | Rust | Soli (app + SoliDB + SoliKV) |
-|---|---:|---:|
-| Room page | 1.42 ms / 91 µs / 24.1 KB | 0.64 ms / 95 µs / 20.9 KB |
-| Messages page | 1.28 ms / 78 µs / 16.2 KB | 0.71 ms / 104 µs / 12.2 KB |
-| Sidebar¹ | 1.39 ms / 90 µs / 5.8 KB | 0.38 ms / 52 µs / 2.3 KB |
-| Search | 0.96 ms / 82 µs / 9.7 KB | 0.80 ms / 116 µs / 9.5 KB |
-| Post a message | 4.34 ms / 283 µs | 5.23 ms / 588 µs |
-| `/up` | 0.17 ms / 8 µs | 0.12 ms / 7 µs |
+| Per request | p99 Rust | p99 Soli | CPU Rust | CPU Soli | Size Rust | Size Soli |
+|---|---:|---:|---:|---:|---:|---:|
+| Room page | 1.42 ms | 0.66 ms | 103 µs | 113 µs | 24.1 KB | 20.9 KB |
+| Messages page | 1.28 ms | 0.74 ms | 90 µs | 129 µs | 16.2 KB | 12.2 KB |
+| Sidebar¹ | 1.39 ms | 0.38 ms | 102 µs | 62 µs | 5.8 KB | 2.3 KB |
+| Search | 0.95 ms | 0.84 ms | 98 µs | 138 µs | 9.7 KB | 9.5 KB |
+| Post a message | 4.34 ms | 4.90 ms | 358 µs | 659 µs | – | – |
+| `/up` | 0.17 ms | 0.12 ms | 11 µs | 9 µs | – | – |
 
-**identity** (`bench/run --gzip 0`, `bench/run-rust --gzip 0`):
+### Without compression
 
-| Requests/sec, median of 3 (range) | Rust | Soli | Soli / Rust |
-|---|---:|---:|---:|
-| Room page | 24,279 (23,898–26,093) | 23,771 (23,706–23,888) | 0.98× |
-| Messages page | 26,187 (25,901–29,069) | 24,038 (24,024–24,101) | 0.92× |
-| Sidebar¹ | 34,476 (34,375–35,352) | 64,134 (64,083–64,198) | 1.86× |
-| Search | 32,762 (30,873–32,899) | 29,762 (29,591–29,862) | 0.91× |
-| Post a message | 9,454 (9,443–9,460) | 6,460 (6,349–6,767) | 0.68× |
-| `/up` | 167,531 (165,748–168,005) | 312,865 (311,842–313,140) | 1.87× |
+| Requests per second | Rust | Soli | Soli vs Rust |
+|---|---:|---:|---|
+| Room page | 24.3k | 23.5k | 3% slower |
+| Messages page | 26.2k | 23.4k | 10% slower |
+| Sidebar¹ | 34.5k | 65.9k | **1.9× faster** |
+| Search | 32.8k | 27.5k | 16% slower |
+| Post a message | 9.5k | 6.4k | 32% slower |
+| `/up` | 168k | 316k | **1.9× faster** |
 
-| p99 latency / CPU per request / body sent | Rust | Soli (app + SoliDB + SoliKV) |
-|---|---:|---:|
-| Room page | 2.11 ms / 121 µs / 416 KB | 1.20 ms / 136 µs / 421 KB |
-| Messages page | 1.80 ms / 107 µs / 384 KB | 1.08 ms / 134 µs / 389 KB |
-| Sidebar¹ | 1.36 ms / 90 µs / 30.7 KB | 0.39 ms / 53 µs / 9.8 KB |
-| Search | 1.10 ms / 90 µs / 150 KB | 0.81 ms / 119 µs / 151 KB |
-| Post a message | 4.26 ms / 280 µs | 4.69 ms / 526 µs |
-| `/up` | 0.16 ms / 8 µs | 0.13 ms / 7 µs |
+| Per request | p99 Rust | p99 Soli | CPU Rust | CPU Soli | Size Rust | Size Soli |
+|---|---:|---:|---:|---:|---:|---:|
+| Room page | 2.06 ms | 1.20 ms | 164 µs | 178 µs | 416 KB | 421 KB |
+| Messages page | 1.80 ms | 1.10 ms | 147 µs | 182 µs | 384 KB | 389 KB |
+| Sidebar¹ | 1.38 ms | 0.38 ms | 102 µs | 61 µs | 30.7 KB | 9.8 KB |
+| Search | 1.10 ms | 0.88 ms | 113 µs | 154 µs | 150 KB | 151 KB |
+| Post a message | 4.29 ms | 5.00 ms | 351 µs | 599 µs | – | – |
+| `/up` | 0.16 ms | 0.13 ms | 10 µs | 10 µs | – | – |
 
 ¹ Not the same work. The load generator sends no `Turbo-Frame` header, so the Rust port, like Rails,
-renders the sidebar inside the application layout (30.7 KB); this app always answers with the frame
-alone (9.8 KB), which is what Rails renders for the `Turbo-Frame` request a browser makes.
+renders the sidebar inside the application layout; this app always answers with the frame alone,
+which is what Rails renders for the `Turbo-Frame` request a browser makes.
 
-The room page is 420 KB of HTML (every message carries its actions menu), as it is in Rails. A post
-answers with the same turbo-stream on both sides (about 9.3 KB); the load generator's byte count for
-Rust's is wrong, so the table gives none. `/up` is the framework's floor: Soli answers it before any
-application code, Rust with the Rails health check page. An earlier version of this table gave Rust
-4,333 req/s for posting, from a run that later runs did not reproduce (8,610–9,460).
+The room page is about 420 KB of HTML uncompressed (every message carries its actions menu), as it is
+in Rails. A post answers with the same turbo-stream on both sides (about 9.3 KB); the load
+generator's byte count for Rust's is wrong, so the tables give none. `/up` is the framework's floor:
+Soli answers it before any application code, Rust with the Rails health check page.
 
-| Memory and startup | Rust | Soli |
+### Memory and startup
+
+| Memory (PSS) and startup | Rust | Soli |
 |---|---:|---:|
-| Idle, PSS | 44 MiB | 272 MiB (app 187, SoliDB 58, SoliKV 27) |
-| Peak during the workloads, gzip, PSS | 200 MiB | 503 MiB (app 355, SoliDB 159, SoliKV 29) |
-| Peak during the workloads, identity, PSS | 203 MiB | 407 MiB (app 251, SoliDB 164, SoliKV 28) |
-| Cold start until `/up` answers | 68 ms (container start included) | 102 ms (SoliDB and SoliKV already up) |
+| Idle | 44 MiB | 272 MiB (app 187, SoliDB 58, SoliKV 27) |
+| Busiest moment, gzip | 200 MiB | 521 MiB (app 362, SoliDB 156, SoliKV 29) |
+| Busiest moment, no compression | 203 MiB | 411 MiB (app 250, SoliDB 162, SoliKV 28) |
+| Cold start until `/up` answers | 68 ms (container start included) | 94 ms (SoliDB and SoliKV already up) |
 
 Soli's app memory is mostly its eight workers, each with its own interpreter, loaded code and page
 caches; fewer workers use less. With compression on, add the cache of compressed bodies (64 MB at most
-by default, `SOLI_COMPRESS_CACHE_MB`), which also keeps the bodies it compressed alive.
+by default, `SOLI_COMPRESS_CACHE_MB`).
 
-What the numbers rest on:
+### What the numbers rest on
 
 - **Compressed pages are kept.** Soli gzips at level 6 (zlib's, so `Rack::Deflater`'s) and keeps the
   result in a cache its workers share. A room page's cached response is the same string from one
@@ -176,34 +182,41 @@ What the numbers rest on:
 - **Only indexes the planner uses.** SoliDB serves a room's pages from the `room_id` hash index and
   sorts in memory; it never uses a compound `(room_id, created_at)` index, so that one is gone.
 
-Compressing in front of the app instead does not work at this size. Behind Soli Proxy with its own
-compression on, which deflates every response afresh, the room page falls to 3,190 req/s (the proxy
-spends about 1 ms of CPU per request on it), the messages page to 4,540 and search to 6,749; with
-`SOLI_COMPRESS` the proxy passes the encoded response through. Even uncompressed, the proxy's hop
-costs about 10 µs of CPU per request, more than Soli's whole `/up` (7 µs; 140,319 req/s through it).
+### Behind Soli Proxy
+
+Compressing in front of the app instead does not work at this size. Measured with Soli 2.15.3 behind
+Soli Proxy with the proxy's own compression on, which deflates every response afresh: the room page
+falls to 3,190 req/s (the proxy spends about 1 ms of CPU per request on it), the messages page to
+4,540 and search to 6,749. With `SOLI_COMPRESS`, the proxy passes the encoded response through. Even
+uncompressed, the proxy's hop costs about 10 µs of CPU per request, more than Soli's whole `/up`
+(7 µs; 140,319 req/s through it).
+
+### Reproducing
 
 These figures compare two implementations on one machine. The reference README's table was measured on
-another (an AMD Ryzen AI MAX+ 395) and cannot be read against them; a run on a slower laptop is in
-`bench/results/20261004-pinned/`. Action Cable throughput and many-client memory were not measured.
+another (an AMD Ryzen AI MAX+ 395) and cannot be read against them. Action Cable throughput and
+many-client memory were not measured.
 
-To reproduce, with a seed from the Rust port (`parity/bin/seed build default`) and the loadgen built
+With a seed from the Rust port (`parity/bin/seed build default`) and the loadgen built
 (`cd bench/loadgen && cargo build --release`):
 
 ```sh
 ALL="room_show messages_page sidebar search post_message up"
 bench/run      --seed SEED --loadgen LOADGEN --workers 8 --reps 3 --compress --only "$ALL"   # this app, gzip
 bench/run-rust --seed SEED --loadgen LOADGEN --image campfire-rust:bench --reps 3 --only "$ALL"
-bench/run      --seed SEED --loadgen LOADGEN --workers 8 --reps 3 --gzip 0 --only "$ALL"     # identity
+bench/run      --seed SEED --loadgen LOADGEN --workers 8 --reps 3 --gzip 0 --only "$ALL"     # no compression
 bench/run-rust --seed SEED --loadgen LOADGEN --image campfire-rust:bench --reps 3 --gzip 0 --only "$ALL"
 bench/run      --seed SEED --loadgen LOADGEN --workers 8 --reps 3 --proxy PATH/TO/soli-proxy  # behind the proxy
 ```
 
 `bench/run` starts its own SoliDB and SoliKV on fresh data and imports the seed (and, with `--proxy`,
 a Soli Proxy with compression on, on the same CPUs); both scripts pin every process, record CPU per
-request (user + system, the system part on its own), memory (RSS, anonymous, PSS) and cold start, and
-write raw results to `bench/results/`. The rbuild2 results are in `bench/results/rbuild2-20261005/`:
-`soli-gzip`, `rust-gzip`, `soli-identity`, `rust-identity`, `soli-proxy` and `soli-proxy-up`; `soli`
-and `rust` hold the runs of this README's previous version.
+request (user and system), memory (RSS, anonymous, PSS) and cold start, and write raw results to
+`bench/results/`. Set `BENCH_DB_PORT`, `BENCH_KV_PORT` or `BENCH_APP_PORT` when the default ports
+(6799, 6899, 5299) are taken. The rbuild2 results: Soli in `bench/results/rbuild2-20261007/`
+(`soli-gzip`, `soli-identity`); Rust, and the earlier Soli 2.15.3 and proxy runs, in
+`bench/results/rbuild2-20261005/` (`rust-gzip`, `rust-identity`, `soli-gzip`, `soli-identity`,
+`soli-proxy`, `soli-proxy-up`).
 
 ## Known differences
 

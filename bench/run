@@ -19,12 +19,17 @@
 #
 # --compress has Soli gzip its own responses (SOLI_COMPRESS=gzip, a Soli that has it), with the
 # compressed bodies it keeps, the way the reference's Rack::Deflater does in its config.ru.
+#
+# Ports: SoliDB 6799, SoliKV 6899, app 5299, proxy 5399/5398, or BENCH_DB_PORT, BENCH_KV_PORT,
+# BENCH_APP_PORT, BENCH_PROXY_PORT, BENCH_PROXY_TLS_PORT. A port already in use stops the run:
+# a test suite's SoliDB on 6799 would otherwise answer the health check in our SoliDB's place.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ONLY="room_show messages_page sidebar search post_message" SEED="" LOADGEN="" CPUS=8-11 CLIENT_CPUS=12-15 WORKERS=4 SECS=4 CONC=16 REPS=2 GZIP=1 PROXY="" COMPRESS=""
 OUT="$ROOT/bench/results/$(date +%Y%m%d-%H%M%S)"
-DB_PORT=6799 KV_PORT=6899 APP_PORT=5299 PROXY_PORT=5399 PROXY_TLS_PORT=5398
+DB_PORT=${BENCH_DB_PORT:-6799} KV_PORT=${BENCH_KV_PORT:-6899} APP_PORT=${BENCH_APP_PORT:-5299}
+PROXY_PORT=${BENCH_PROXY_PORT:-5399} PROXY_TLS_PORT=${BENCH_PROXY_TLS_PORT:-5398}
 while [ $# -gt 0 ]; do
   case "$1" in
     --seed) SEED=$2; shift 2 ;;
@@ -44,6 +49,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$SEED" ] && [ -n "$LOADGEN" ] || { echo "bench/run: --seed and --loadgen are required" >&2; exit 1; }
+for port in "$DB_PORT" "$KV_PORT" "$APP_PORT" ${PROXY:+"$PROXY_PORT" "$PROXY_TLS_PORT"}; do
+  if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
+    echo "bench/run: port $port is already in use (see BENCH_*_PORT above)" >&2; exit 1
+  fi
+done
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/campfire-bench.XXXXXX")
 mkdir -p "$OUT"
@@ -77,10 +87,12 @@ echo "bench: SoliKV on CPUs $CPUS, port $KV_PORT" >&2
 KV_PID=$!
 export SOLIKV_RESP_HOST=127.0.0.1 SOLIKV_RESP_PORT=$KV_PORT
 
+# A failed setup step prints its log: cleanup deletes $WORK.
+step() { local log=$1; shift; "$@" > "$log" 2>&1 || { echo "bench/run: $* failed" >&2; tail -20 "$log" >&2; exit 1; }; }
 cd "$ROOT"
-soli db:migrate up > "$WORK/migrate.log" 2>&1
-bin/import-seed "$SEED" --database campfire_bench > "$WORK/import.log"
-soli db:seed . db/seeds/after_import.sl > "$WORK/after_import.log" 2>&1
+step "$WORK/migrate.log" soli db:migrate up
+step "$WORK/import.log" bin/import-seed "$SEED" --database campfire_bench
+step "$WORK/after_import.log" soli db:seed . db/seeds/after_import.sl
 
 echo "bench: Soli on CPUs $CPUS, $WORKERS workers, port $APP_PORT" >&2
 STARTED=$(date +%s%N)

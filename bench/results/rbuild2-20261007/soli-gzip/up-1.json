@@ -1,0 +1,30 @@
+{
+  "avg_bytes": 5,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 9.407,
+    "mean_ms": 0.05,
+    "n": 1259841,
+    "p50_ms": 0.038,
+    "p90_ms": 0.076,
+    "p99_ms": 0.118
+  },
+  "ok": 1259841,
+  "path": "/up",
+  "rps": 314774.3,
+  "secs": 4.0,
+  "statuses": {
+    "200": 1259841
+  },
+  "cpu_us_per_request": {
+    "app": 6.9,
+    "app.sys": 2.5,
+    "solidb": 0.0,
+    "solidb.sys": 0.0,
+    "solikv": 0.0,
+    "solikv.sys": 0.0
+  }
+}
