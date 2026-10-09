@@ -1,24 +1,55 @@
-# Active Storage on SoliDB blobs: every original and every variant is a blob in the
-# "attachments" blob collection, served streamed (with Range) by AttachmentsController.
+# Active Storage's disk service: every original and every variant is a file under the blobs
+# directory next to the database file (storage/blobs; key[0..2]/key[2..4]/key, Active
+# Storage's layout), described by a row of the blobs table, and served (with Range) by
+# AttachmentsController.
 class Attachments
-  static COLLECTION: String = "attachments"
   static THUMB_MAX_WIDTH: Int = 1200
   static THUMB_MAX_HEIGHT: Int = 800
   # Active Storage's variable content types, less the ones config/initializers/vips.rb drops.
   static VARIABLE_TYPES: Array = ["image/png", "image/gif", "image/jpeg", "image/pjpeg", "image/tiff", "image/webp", "image/avif", "image/heic", "image/heif"]
 
-  static def db
-    handle = Solidb(getenv("SOLIDB_HOST") ?? "http://localhost:6745", getenv("SOLIDB_DATABASE") ?? "once_campfire_soli")
-    handle.auth(getenv("SOLIDB_USERNAME") ?? "admin", getenv("SOLIDB_PASSWORD") ?? "admin")
-    handle
+  # "storage/blobs" for DATABASE_URL=sqlite://storage/campfire.sqlite3
+  static def root
+    path = (getenv("DATABASE_URL") ?? "sqlite://storage/campfire.sqlite3").replace("sqlite://", "").split("?")[0]
+    parts = path.split("/")
+    parts.length > 1 ? parts.take(parts.length - 1).join("/") + "/blobs" : "blobs"
+  end
+
+  static def file_path(blob_id)
+    Attachments.root + "/" + blob_id.substring(0, 2) + "/" + blob_id.substring(2, 4) + "/" + blob_id
+  end
+
+  # The blob's key: 28 lowercase letters and digits, like Active Storage's.
+  static def generate_key
+    chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    key = ""
+    for b in Crypto.random_bytes(28)
+      key += chars[b % 36]
+    end
+    key
   end
 
   static def store(data_base64, filename, content_type)
-    Attachments.db.store_blob(Attachments.COLLECTION, data_base64, filename, content_type)
+    data = Base64.decode(data_base64)
+    key = Attachments.generate_key
+    path = Attachments.file_path(key)
+    mkdir_p(path.substring(0, path.length - key.length - 1))
+    barf(path, data)
+    Db.insert("blobs", {"_key": key, "filename": filename ?? "file", "content_type": content_type,
+                        "byte_size": data.length, "created_at": Clock.now})
+    key
+  end
+
+  # The blob's bytes, as slurp(path, "binary") reads them; nil when the file is gone.
+  static def read(blob_id)
+    slurp(Attachments.file_path(blob_id), "binary") rescue nil
   end
 
   static def delete_blob(blob_id)
-    Attachments.db.delete_blob(Attachments.COLLECTION, blob_id) rescue nil unless blob_id.nil?
+    return nil if blob_id.nil?
+
+    Db.delete_row("blobs", blob_id)
+    File.delete(Attachments.file_path(blob_id)) rescue nil
   end
 
   # Every blob an attachment hash points at.
@@ -28,6 +59,39 @@ class Attachments
     for key in ["blob_id", "variant_blob_id", "preview_blob_id"]
       Attachments.delete_blob(attachment[key])
     end
+  end
+
+  # The blob as a response: whole, or the one byte range asked for (video seeking), with the
+  # caller's headers.
+  static def response(blob_id, req, headers)
+    meta = Db.find_row("blobs", blob_id)
+    return {"status": 404, "headers": {}, "body": ""} if meta.nil?
+
+    data = Attachments.read(blob_id)
+    return {"status": 404, "headers": {}, "body": ""} if data.nil?
+
+    size = data.length
+    headers["Accept-Ranges"] = "bytes"
+    wanted = Regex.capture("^bytes=(?P<first>\\d*)-(?P<last>\\d*)$", req["headers"]["range"] ?? "")
+    return {"status": 200, "headers": headers, "body": data} if wanted.nil? || (wanted["first"] == "" && wanted["last"] == "")
+
+    first_byte = 0
+    last_byte = size - 1
+    if wanted["first"] == ""
+      first_byte = size - int(wanted["last"])
+      first_byte = 0 if first_byte < 0
+    else
+      first_byte = int(wanted["first"])
+      last_byte = int(wanted["last"]) unless wanted["last"] == ""
+    end
+    last_byte = size - 1 if last_byte > size - 1
+    if first_byte > last_byte || first_byte >= size
+      headers["Content-Range"] = "bytes */" + str(size)
+      return {"status": 416, "headers": headers, "body": ""}
+    end
+
+    headers["Content-Range"] = "bytes " + str(first_byte) + "-" + str(last_byte) + "/" + str(size)
+    {"status": 206, "headers": headers, "body": data.slice(first_byte, last_byte + 1)}
   end
 
   static def variable?(content_type)

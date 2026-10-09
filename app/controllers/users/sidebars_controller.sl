@@ -8,7 +8,7 @@ class UsersSidebarsController < ApplicationController
     cached = PageCache.get(name)
     known = cached.nil? || cached["context"] != context ? "" : cached["sig"]
     data = Sidebar.load(me, known)
-    return {"status": 200, "headers": cached["headers"], "body": cached["body"]} if data["same"]
+    return @_keep({"status": 200, "headers": cached["headers"], "body": cached["body"]}) if data["same"]
 
     directs = []
     others = []
@@ -30,6 +30,6 @@ class UsersSidebarsController < ApplicationController
     @user_rooms_stream = Cable.signed_stream_name("user:" + me + ":rooms")
     response = render("users/sidebars/show", {}, {"layout": false})
     PageCache.set(name, {"sig": data["sig"], "context": context, "headers": response["headers"], "body": response["body"]})
-    response
+    @_keep(response)
   end
 end

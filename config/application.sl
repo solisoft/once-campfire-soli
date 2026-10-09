@@ -112,5 +112,5 @@
 # whole bundle.
 
 
-# Push notifications queued in SoliKV by new messages (see PushQueue).
+# Push notifications queued in SQLite by new messages (see PushQueue).
 Cron.schedule("push_delivery", "*/2 * * * * *", "PushDeliveryJob", {})

@@ -2,5 +2,5 @@
 name = "once-campfire-soli"
 version = "0.1.0"
 main = "app.sl"
-# soli_version = "2.15.2"    # minimum soli version required to run this project
+soli_version = "2.18.7"      # minimum: the response cache, SQLite writers, Action Cable in browsers
 # soli_version = "=2.15.2"   # or pin exactly: soli fetches and runs this version here

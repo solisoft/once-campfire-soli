@@ -6,13 +6,18 @@ class Ids
     str(int(DateTime.microtime()))
   end
 
-  # Model.create under a generated key, retried if another write took the same microsecond.
-  static def create(model, attrs)
-    record = nil
+  # The row inserted under a generated key, retried if another write took the same
+  # microsecond. Any other failure (a taken email address) raises.
+  static def create(table, attrs)
+    taken = "UNIQUE constraint failed: " + table + "._key"
     for attempt in 0..5
-      record = model.create(attrs, {"key": Ids.generate})
-      return record if record._errors.nil? || record._errors.length == 0
+      attrs["_key"] = Ids.generate
+      try
+        return Db.insert(table, attrs)
+      catch error
+        throw error unless str(error).contains(taken) && attempt < 4
+      end
     end
-    record
+    attrs
   end
 end

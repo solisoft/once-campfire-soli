@@ -15,7 +15,7 @@ class UsersAvatarsController < ApplicationController
     if !avatar.nil? && !avatar["square_blob_id"].nil?
       cache["Content-Type"] = "image/webp"
       cache["Content-Disposition"] = "inline"
-      return Attachments.db.blob_response(Attachments.COLLECTION, avatar["square_blob_id"], req, cache)
+      return Attachments.response(avatar["square_blob_id"], req, cache)
     end
     if user["role"] == "bot"
       cache["Content-Type"] = "image/svg+xml"

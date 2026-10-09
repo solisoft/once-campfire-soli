@@ -9,8 +9,7 @@ class Membership < Model
     rk = room["_key"]
     involvement = Room.default_involvement(room)
     now = Clock.now
-    existing = @sdbql{ FOR m IN memberships FILTER m.room_id == #{rk} RETURN m.user_id }
-    existing = [] unless existing.is_a?("array")
+    existing = Room.user_keys(rk)
     i = 0
     docs = user_keys.uniq.filter { |k| !existing.include?(k) }.map { |k|
       i += 1
@@ -19,89 +18,52 @@ class Membership < Model
     }
     return nil if docs.length == 0
 
-    @sdbql{ FOR d IN #{docs} INSERT d INTO memberships }
+    Db.transaction(fn() {
+      for doc in docs
+        Db.insert("memberships", doc)
+      end
+    })
   end
 
   static def grant_open_rooms_to(user_key)
     now = Clock.now
-    base = Ids.generate
-    uk = user_key
-    @sdbql{
-      FOR r IN rooms FILTER r.type == "Rooms::Open"
-        LET taken = LENGTH(FOR m IN memberships FILTER m.room_id == r._key AND m.user_id == #{uk} LIMIT 1 RETURN 1)
-        FILTER taken == 0
-        INSERT {_key: CONCAT(#{base}, r._key), room_id: r._key, user_id: #{uk}, involvement: "mentions", unread_at: null,
-                connected_at: null, connections: 0, created_at: #{now}, updated_at: #{now}} INTO memberships
-    }
+    Db.exec("INSERT INTO memberships (_key, room_id, user_id, involvement, connections, created_at, updated_at) " +
+            "SELECT ? || r._key, r._key, ?, 'mentions', 0, ?, ? FROM rooms r WHERE r.type = 'Rooms::Open' " +
+            "AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.room_id = r._key AND m.user_id = ?)",
+            [Ids.generate, user_key, now, now, user_key])
   end
 
   static def revoke(room_key, user_keys)
     return nil if user_keys.length == 0
 
-    rk = room_key
-    @sdbql{ FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id IN #{user_keys} REMOVE m IN memberships }
+    Db.exec("DELETE FROM memberships WHERE room_id = ? AND user_id IN (" + Db.marks(user_keys) + ")", [room_key] + user_keys)
   end
 
   static def find_hash(key)
-    k = key
-    rows = @sdbql{ FOR m IN memberships FILTER m._key == #{k} LIMIT 1 RETURN m }
-    Db.first(rows)
+    Db.find_row("memberships", key)
   end
 
   static def find_for(user_key, room_key)
     return nil if user_key.nil? || room_key.nil?
 
-    uk = user_key
-    rk = str(room_key)
-    rows = @sdbql{ FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == #{uk} LIMIT 1 RETURN m }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("memberships", "m") + " AS j FROM memberships m WHERE m.room_id = ? AND m.user_id = ?", [str(room_key), user_key])
   end
 
   # The membership and its room in one round trip (RoomScoped#set_room).
   static def with_room_for(user_key, room_key)
     return nil if user_key.nil? || room_key.nil?
 
-    uk = user_key
-    rk = str(room_key)
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == #{uk}
-        FOR r IN rooms FILTER r._key == m.room_id
-          LIMIT 1
-          RETURN {membership: m, room: r}
-    }
-    Db.first(rows)
-  end
-
-  # with_room_for, plus every member's state for a new message's unread marks and pushes.
-  static def with_room_and_members(user_key, room_key)
-    return nil if user_key.nil? || room_key.nil?
-
-    uk = user_key
-    rk = str(room_key)
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == #{uk}
-        FOR r IN rooms FILTER r._key == m.room_id
-          LIMIT 1
-          LET members = (
-            FOR o IN memberships FILTER o.room_id == #{rk}
-              RETURN {_key: o._key, user_id: o.user_id, involvement: o.involvement, unread_at: o.unread_at, connected_at: o.connected_at,
-                      subscribed: LENGTH(FOR p IN push_subscriptions FILTER p.user_id == o.user_id LIMIT 1 RETURN 1) > 0}
-          )
-          RETURN {membership: m, room: r, members: members}
-    }
-    Db.first(rows)
+    Db.row("SELECT json_object('membership', " + Db.json("memberships", "m") + ", 'room', " + Db.json("rooms", "r") + ") AS j " +
+           "FROM memberships m JOIN rooms r ON r._key = m.room_id WHERE m.room_id = ? AND m.user_id = ?",
+           [str(room_key), user_key])
   end
 
   static def set_involvement(membership, involvement)
-    k = membership["_key"]
-    now = Clock.now
-    @sdbql{ FOR m IN memberships FILTER m._key == #{k} UPDATE m WITH {involvement: #{involvement}, updated_at: #{now}} IN memberships }
+    Db.update_row("memberships", membership["_key"], {"involvement": involvement, "updated_at": Clock.now})
   end
 
   static def read(membership_key)
-    k = membership_key
-    now = Clock.now
-    @sdbql{ FOR m IN memberships FILTER m._key == #{k} UPDATE m WITH {unread_at: null, updated_at: #{now}} IN memberships }
+    Db.update_row("memberships", membership_key, {"unread_at": nil, "updated_at": Clock.now})
   end
 
   static def connected?(membership, now = nil)
@@ -114,10 +76,7 @@ class Membership < Model
     now = Clock.now
     k = membership["_key"]
     connections = Membership.connected?(membership, now) ? membership["connections"] + 1 : 1
-    @sdbql{
-      FOR m IN memberships FILTER m._key == #{k}
-        UPDATE m WITH {connections: #{connections}, connected_at: #{now}, unread_at: null} IN memberships
-    }
+    Db.update_row("memberships", k, {"connections": connections, "connected_at": now, "unread_at": nil})
   end
 
   # Membership::Connectable#disconnected
@@ -126,9 +85,9 @@ class Membership < Model
     k = membership["_key"]
     connections = Membership.connected?(membership, now) ? membership["connections"] - 1 : 0
     if connections < 1
-      @sdbql{ FOR m IN memberships FILTER m._key == #{k} UPDATE m WITH {connections: #{connections}, connected_at: null, updated_at: #{now}} IN memberships }
+      Db.update_row("memberships", k, {"connections": connections, "connected_at": nil, "updated_at": now})
     else
-      @sdbql{ FOR m IN memberships FILTER m._key == #{k} UPDATE m WITH {connections: #{connections}, updated_at: #{now}} IN memberships }
+      Db.update_row("memberships", k, {"connections": connections, "updated_at": now})
     end
   end
 
@@ -137,84 +96,45 @@ class Membership < Model
     now = Clock.now
     k = membership["_key"]
     connections = Membership.connected?(membership, now) ? membership["connections"] : membership["connections"] + 1
-    @sdbql{ FOR m IN memberships FILTER m._key == #{k} UPDATE m WITH {connections: #{connections}, connected_at: #{now}, updated_at: #{now}} IN memberships }
+    Db.update_row("memberships", k, {"connections": connections, "connected_at": now, "updated_at": now})
   end
 
   # Room#unread_memberships: visible, disconnected members other than the author.
   static def mark_unread(room_key, author_key, at)
-    rk = room_key
-    ak = author_key
-    cutoff = Clock.now - Membership.CONNECTION_TTL_MS
     now = Clock.now
-    @sdbql{
-      FOR m IN memberships
-        FILTER m.room_id == #{rk} AND m.user_id != #{ak} AND m.involvement != "invisible"
-        FILTER m.connected_at == null OR m.connected_at < #{cutoff}
-        UPDATE m WITH {unread_at: #{at}, updated_at: #{now}} IN memberships
-    }
+    Db.exec("UPDATE memberships SET unread_at = ?, updated_at = ? WHERE room_id = ? AND user_id != ? " +
+            "AND involvement IS NOT 'invisible' AND (connected_at IS NULL OR connected_at < ?)",
+            [at, now, room_key, author_key, now - Membership.CONNECTION_TTL_MS])
   end
 
   # Memberships of a user, each with its room, rooms ordered by LOWER(name).
   static def with_rooms_for(user_key, visible_only = false)
-    uk = user_key
-    rows = nil
-    if visible_only
-      rows = @sdbql{
-        FOR m IN memberships FILTER m.user_id == #{uk} AND m.involvement != "invisible"
-          FOR r IN rooms FILTER r._key == m.room_id
-            SORT LOWER(r.name), r._key
-            RETURN MERGE(m, {room: r})
-      }
-    else
-      rows = @sdbql{
-        FOR m IN memberships FILTER m.user_id == #{uk}
-          FOR r IN rooms FILTER r._key == m.room_id
-            SORT LOWER(r.name), r._key
-            RETURN MERGE(m, {room: r})
-      }
-    end
-    Db.array(rows)
+    visible = visible_only ? " AND m.involvement IS NOT 'invisible'" : ""
+    Db.rows("SELECT json_object(" + Db.fields("memberships", "m") + ", 'room', " + Db.json("rooms", "r") + ") AS j " +
+            "FROM memberships m JOIN rooms r ON r._key = m.room_id WHERE m.user_id = ?" + visible +
+            " ORDER BY lower(r.name), r._key", [user_key])
   end
 
   # user.memberships.without_direct_rooms.delete_all
   static def delete_for_user_without_direct_rooms(user_key)
-    uk = user_key
-    @sdbql{
-      LET directs = (FOR r IN rooms FILTER r.type == "Rooms::Direct" RETURN r._key)
-      FOR m IN memberships FILTER m.user_id == #{uk} AND m.room_id NOT IN directs
-        REMOVE m IN memberships
-    }
+    Db.exec("DELETE FROM memberships WHERE user_id = ? AND room_id NOT IN (SELECT _key FROM rooms WHERE type = 'Rooms::Direct')",
+            [user_key])
   end
 
   # user.rooms.without_directs.ordered
   static def rooms_without_directs_for(user_key)
-    uk = user_key
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.user_id == #{uk}
-        FOR r IN rooms FILTER r._key == m.room_id AND r.type != "Rooms::Direct"
-          SORT LOWER(r.name), r._key
-          RETURN r
-    }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("rooms", "r") + " AS j FROM memberships m JOIN rooms r ON r._key = m.room_id " +
+            "WHERE m.user_id = ? AND r.type != 'Rooms::Direct' ORDER BY lower(r.name), r._key", [user_key])
   end
 
   # Current.user.memberships.with_ordered_room for users/profiles/show: each membership with
   # its room and, for a direct room, the names of the other members in users' id order (the
   # order room.users comes back in), for room_display_name.
   static def with_rooms_and_other_names_for(user_key)
-    uk = user_key
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.user_id == #{uk}
-        FOR r IN rooms FILTER r._key == m.room_id
-          SORT LOWER(r.name), r._key
-          LET others = r.type != "Rooms::Direct" ? [] : (
-            FOR o IN memberships FILTER o.room_id == r._key AND o.user_id != #{uk}
-              FOR u IN users FILTER u._key == o.user_id
-                SORT TO_NUMBER(u._key)
-                RETURN u.name
-          )
-          RETURN MERGE(m, {room: r, other_names: others})
-    }
-    Db.array(rows)
+    Db.rows("SELECT json_object(" + Db.fields("memberships", "m") + ", 'room', " + Db.json("rooms", "r") + ", 'other_names', json(CASE WHEN r.type != 'Rooms::Direct' " +
+            "THEN '[]' ELSE (SELECT json_group_array(u.name ORDER BY CAST(u._key AS INTEGER)) FROM memberships o " +
+            "JOIN users u ON u._key = o.user_id WHERE o.room_id = r._key AND o.user_id != ?) END)) AS j " +
+            "FROM memberships m JOIN rooms r ON r._key = m.room_id WHERE m.user_id = ? ORDER BY lower(r.name), r._key",
+            [user_key, user_key])
   end
 end

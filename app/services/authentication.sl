@@ -9,13 +9,12 @@ class Authentication
   static COOKIE: String = "session_token"
   static TWENTY_YEARS: Int = 631152000
 
-  # Routes that skip require_authentication (allow_unauthenticated_access).
-  static PUBLIC_PATTERNS: Array = [
-    "^/first_run$", "^/session/new$", "^/session/transfers/[^/]+$", "^/qr_code/[^/]+$",
-    "^/account/logo$", "^/attachments/[^/]+/[^/]+$", "^/webmanifest(\\.json)?$", "^/service-worker(\\.js)?$", "^/up$"
-  ]
+  # Routes that skip require_authentication (allow_unauthenticated_access), as one pattern:
+  # every request is tested against it.
+  static PUBLIC_PATTERN: String = "^/(first_run|session/new|session/transfers/[^/]+|qr_code/[^/]+|account/logo|" +
+    "attachments/[^/]+/[^/]+|webmanifest(\\.json)?|service-worker(\\.js)?|up)$"
   # require_unauthenticated_access: signed-in users are sent home.
-  static UNAUTHENTICATED_PATTERNS: Array = ["^/join/[^/]+$"]
+  static UNAUTHENTICATED_PATTERN: String = "^/join/[^/]+$"
   # allow_bot_access: the bot_key routes.
   static BOT_PATTERN: String = "^/rooms/[^/]+/[^/]+-[A-Za-z0-9]+/messages"
 
@@ -29,13 +28,13 @@ class Authentication
 
     halt(429, "") if method != "GET" && method != "HEAD" && Ban.banned?(Authentication.remote_ip(req))
 
-    if Authentication.matches_any(path, Authentication.UNAUTHENTICATED_PATTERNS)
+    if Regex.matches(Authentication.UNAUTHENTICATED_PATTERN, path)
       return redirect("/") unless Authentication.restore(req).nil?
 
       return req
     end
 
-    public_route = Authentication.matches_any(path, Authentication.PUBLIC_PATTERNS) ||
+    public_route = Regex.matches(Authentication.PUBLIC_PATTERN, path) ||
       (path == "/session" && method == "POST")
     if public_route
       Authentication.restore(req)
@@ -93,11 +92,19 @@ class Authentication
     Cable.disconnect_user(req["current_user"]["_key"], true) unless req["current_user"].nil?
   end
 
-  # cookies.signed[:session_token]
+  # cookies.signed[:session_token]. A session cookie never expires, so a value verifies to the
+  # same token every time: each worker remembers the values it has verified (never one that
+  # failed) instead of redoing the HMAC on every request.
   static def token_from_cookie(value)
     return nil if value.blank?
 
-    Signer.verify(url_decode(value) rescue value, "session_token")
+    name = "cookie:" + value
+    known = PageCache.get(name)
+    return known unless known.nil?
+
+    token = Signer.verify(url_decode(value) rescue value, "session_token")
+    PageCache.set(name, token) unless token.nil?
+    token
   end
 
   # The user behind a raw Cookie header (Action Cable connections).
@@ -135,12 +142,5 @@ class Authentication
     return "" if q.nil? || q.keys.length == 0
 
     "?" + q.keys.map { |k| url_encode(k) + "=" + url_encode(str(q[k])) }.join("&")
-  end
-
-  static def matches_any(path, patterns)
-    for pattern in patterns
-      return true if Regex.matches(pattern, path)
-    end
-    false
   end
 end

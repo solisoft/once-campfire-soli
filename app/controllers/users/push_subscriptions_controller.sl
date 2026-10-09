@@ -26,7 +26,7 @@ class UsersPushSubscriptionsController < ApplicationController
 
     agent = req["headers"]["user-agent"]
     created = PushSubscription.create_for(me, attrs["endpoint"], attrs["p256dh_key"], attrs["auth_key"], agent)
-    @_head(created.nil? || (created._errors && created._errors.length > 0) ? 422 : 200)
+    @_head(created.nil? ? 422 : 200)
   end
 
   # DELETE /users/:user_id/push_subscriptions/:id

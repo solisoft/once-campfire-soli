@@ -77,47 +77,63 @@ class MessagePresenter
   end
 
   # messages/_message, rendered once per worker and kind with markers where each message's
-  # values go (escaped where the template escapes them), then filled in by string joins.
+  # values go (escaped where the template escapes them), then filled in by one join. The
+  # template is kept split: the literal text, and between each two pieces of it the field
+  # that goes there and whether it is escaped.
   static ESCAPED: Array = ["client_message_id", "creator_id", "_key", "created_at", "updated_at", "created_iso",
                            "creator_key", "creator_title", "creator_name", "creator_avatar", "permalink_path",
                            "permalink_url", "room_name", "room_id", "blob_path", "download_path", "filename", "emoji_class"]
   static RAW: Array = ["presentation_html", "boosts_html"]
 
   static def render(data)
-    kind = data["content_type"] == "attachment" ? "attachment" : "text"
-    name = "message_template:" + kind
-    template = PageCache.get(name)
-    if template.nil?
-      marked = {"content_type": data["content_type"], "attachment": {"filename": "%%CF:filename%%"},
-                "creator": {"_key": "%%CF:creator_key%%", "title": "%%CF:creator_title%%", "name": "%%CF:creator_name%%",
-                            "avatar_path": "/%%CF:creator_avatar%%"}}
-      for field in MessagePresenter.ESCAPED + MessagePresenter.RAW
-        marked[field] = "%%CF:" + field + "%%" unless marked.has_key(field)
-      end
-      # --dev annotates partials with <!--solidev:…--> comments; they must not reach the cache.
-      # The avatar marker starts with "/" so image_tag takes it for a path, not an asset name.
-      template = Regex.replace_all("<!--solidev:[^>]*-->", render_partial("messages/message", {"m": marked}), "").split("%%CF:")
-      PageCache.set(name, template)
-    end
+    template = MessagePresenter.template(data["content_type"])
     values = {
       "creator_key": data["creator"]["_key"], "creator_title": data["creator"]["title"],
       "creator_name": data["creator"]["name"], "creator_avatar": data["creator"]["avatar_path"].substring(1, data["creator"]["avatar_path"].length),
       "filename": data["attachment"].nil? ? "" : data["attachment"]["filename"]
     }
-    html = template[0]
-    for part in template.drop(1)
-      segments = part.split("%%")
-      field = segments[0]
+    literals = template["literals"]
+    raw = template["raw"]
+    pieces = [literals[0]]
+    i = 0
+    for field in template["fields"]
       value = values.has_key(field) ? values[field] : data[field]
-      html += MessagePresenter.RAW.include?(field) ? str(value ?? "") : html_escape(str(value ?? ""))
-      html += segments.drop(1).join("%%")
+      pieces.push(raw[i] ? str(value ?? "") : html_escape(str(value ?? "")))
+      i = i + 1
+      pieces.push(literals[i])
     end
-    html
+    pieces.join("")
   end
 
-  # A message about to be stored: its author is at hand and it has no boosts yet.
-  static def render_new(message, creator, room, base_url)
-    room_name = Room.direct?(room) ? Room.display_name(room, nil) : room["name"]
+  static def template(content_type)
+    kind = content_type == "attachment" ? "attachment" : "text"
+    name = "message_template:" + kind
+    template = PageCache.get(name)
+    return template unless template.nil?
+
+    marked = {"content_type": content_type, "attachment": {"filename": "%%CF:filename%%"},
+              "creator": {"_key": "%%CF:creator_key%%", "title": "%%CF:creator_title%%", "name": "%%CF:creator_name%%",
+                          "avatar_path": "/%%CF:creator_avatar%%"}}
+    for field in MessagePresenter.ESCAPED + MessagePresenter.RAW
+      marked[field] = "%%CF:" + field + "%%" unless marked.has_key(field)
+    end
+    # --dev annotates partials with <!--solidev:…--> comments; they must not reach the cache.
+    # The avatar marker starts with "/" so image_tag takes it for a path, not an asset name.
+    parts = Regex.replace_all("<!--solidev:[^>]*-->", render_partial("messages/message", {"m": marked}), "").split("%%CF:")
+    template = {"literals": [parts[0]], "fields": [], "raw": []}
+    for part in parts.drop(1)
+      segments = part.split("%%")
+      template["fields"].push(segments[0])
+      template["raw"].push(MessagePresenter.RAW.include?(segments[0]))
+      template["literals"].push(segments.drop(1).join("%%"))
+    end
+    PageCache.set(name, template)
+    template
+  end
+
+  # A message about to be stored: its author is at hand and it has no boosts yet. room_name
+  # is what the message shows for its room (Room.message_room_name).
+  static def render_new(message, creator, room_name, base_url)
     data = MessagePresenter.data(message, Present.user(creator), [], room_name, base_url)
     MessagePresenter.render(data)
   end

@@ -4,9 +4,7 @@ class Webhook < Model
   static def for_user(user_key)
     return nil if user_key.nil?
 
-    uk = user_key
-    rows = @sdbql{ FOR w IN webhooks FILTER w.user_id == #{uk} LIMIT 1 RETURN w }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("webhooks", "w") + " AS j FROM webhooks w WHERE w.user_id = ? LIMIT 1", [user_key])
   end
 
   # User::Bot#update_webhook_url!
@@ -16,14 +14,13 @@ class Webhook < Model
     if url.blank?
       Webhook.delete_for_user(user_key) unless existing.nil?
     elsif existing.nil?
-      Ids.create(Webhook, {"user_id": user_key, "url": url, "created_at": now, "updated_at": now})
+      Ids.create("webhooks", {"user_id": user_key, "url": url, "created_at": now, "updated_at": now})
     else
-      Webhook.update(existing["_key"], {"url": url, "updated_at": now})
+      Db.update_row("webhooks", existing["_key"], {"url": url, "updated_at": now})
     end
   end
 
   static def delete_for_user(user_key)
-    uk = user_key
-    @sdbql{ FOR w IN webhooks FILTER w.user_id == #{uk} REMOVE w IN webhooks }
+    Db.exec("DELETE FROM webhooks WHERE user_id = ?", [user_key])
   end
 end

@@ -16,7 +16,7 @@ class UsersBansController < ApplicationController
     end
     Cable.disconnect_user(key, false)
     Session.destroy_for_user(key)
-    User.update(key, {"status": "banned", "updated_at": Clock.now})
+    Db.update_row("users", key, {"status": "banned", "updated_at": Clock.now})
     RemoveBannedContentJob.perform_later({"user_id": key})
     redirect("/users/" + key)
   end
@@ -25,7 +25,7 @@ class UsersBansController < ApplicationController
   def destroy
     user = @_find_user
     Ban.delete_for_user(user["_key"])
-    User.update(user["_key"], {"status": "active", "updated_at": Clock.now})
+    Db.update_row("users", user["_key"], {"status": "active", "updated_at": Clock.now})
     redirect("/users/" + user["_key"])
   end
 

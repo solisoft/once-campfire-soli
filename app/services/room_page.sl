@@ -14,41 +14,35 @@ class RoomPage
   # The room (a membership of the user's), the HTML of its last page of messages, the room's
   # member names for a direct room, and whether it shows the first-room invitation.
   #
-  # SoliDB joins the cached message HTML itself, so the page costs one string; messages
-  # whose HTML is stale come back by key and are rendered (MessagePresenter) instead.
+  # SQLite joins the cached message HTML itself, so the page costs one string; messages
+  # whose HTML is stale come back by key and are rendered (MessagePresenter) instead. The
+  # signature is the page's html_keys: when the worker's last answer for the room has the
+  # same, the HTML is not even joined.
   static def load(user_key, room_key, at_message_key)
-    uk = user_key
     rk = str(room_key)
-    size = Message.PAGE_SIZE
-    version = MessagePresenter.VERSION + ":"
     cached = PageCache.get("room:" + rk)
     known = cached.nil? ? "" : cached["sig"]
-    rows = @sdbql{
-      LET room = FIRST(
-        FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == #{uk}
-          FOR r IN rooms FILTER r._key == m.room_id
-            RETURN r
-      )
-      LET page = room == null ? [] : REVERSE(
-        FOR m IN messages FILTER m.room_id == #{rk}
-          SORT m.created_at DESC, m._key DESC
-          LIMIT #{size}
-          RETURN {k: m._key, s: m.html_key, html: m.html_key == CONCAT(#{version}, m.updated_at) ? m.html : null}
-      )
-      LET stale = (FOR p IN page FILTER p.html == null RETURN p.k)
-      LET sig = MD5(CONCAT_SEPARATOR(",", page[*].s))
-      LET original = FIRST(FOR r IN rooms SORT r.created_at, r._key LIMIT 1 RETURN r._key)
-      LET paged = original == #{rk} ? LENGTH(FOR m IN messages FILTER m.room_id == #{rk} LIMIT 41 RETURN 1) > #{size} : true
-      LET members = room != null && room.type == "Rooms::Direct" ?
-        (FOR s IN memberships FILTER s.room_id == #{rk} FOR u IN users FILTER u._key == s.user_id SORT TO_NUMBER(u._key), u._key RETURN {_key: u._key, name: u.name}) : []
-      LET fresh = LENGTH(stale) == 0
-      RETURN {room: room, keys: page[*].k, stale: stale, sig: sig, same: fresh AND sig == #{known},
-              html: fresh AND sig != #{known} ? CONCAT_SEPARATOR("\n", page[*].html) : null,
-              invitation: original == #{rk} AND !paged, members: members}
-    }
-    return nil unless Db.array(rows).length > 0 && !rows[0]["room"].nil?
+    # The page size is written into the SQL: SQLite 3.53 runs this query four times slower with
+    # a bound LIMIT (189 µs against 48).
+    size = str(Message.PAGE_SIZE)
+    page = Db.row("WITH room AS MATERIALIZED (SELECT r.* FROM memberships m JOIN rooms r ON r._key = m.room_id " +
+      "WHERE m.room_id = ?1 AND m.user_id = ?2), " +
+      "page AS MATERIALIZED (SELECT m._key AS k, m.html_key AS s, m.created_at AS t, m.html_key IS ?3 || m.updated_at AS ok " +
+      "FROM messages m WHERE m.room_id = ?1 AND EXISTS (SELECT 1 FROM room) ORDER BY m.created_at DESC, m._key DESC LIMIT " + size + "), " +
+      "facts AS (SELECT 'v:' || coalesce((SELECT group_concat(s, ',' ORDER BY t, k) FROM page), '') AS sig, " +
+      "NOT EXISTS (SELECT 1 FROM page WHERE NOT ok) AS fresh, (SELECT _key FROM rooms ORDER BY created_at, _key LIMIT 1) AS original) " +
+      "SELECT json_object('room', json((SELECT " + Db.json("rooms", "r") + " FROM room r)), " +
+      "'keys', json((SELECT json_group_array(k ORDER BY t, k) FROM page)), 'sig', f.sig, " +
+      "'same', json(CASE WHEN f.fresh AND f.sig = ?4 THEN 'true' ELSE 'false' END), " +
+      "'html', CASE WHEN f.fresh AND f.sig != ?4 THEN coalesce((SELECT group_concat(m.html, char(10) ORDER BY p.t, p.k) " +
+      "FROM page p JOIN messages m ON m._key = p.k), '') END, " +
+      "'invitation', json(CASE WHEN f.original = ?1 AND (SELECT count(*) FROM (SELECT 1 FROM messages WHERE room_id = ?1 LIMIT " + size + " + 1)) <= " + size + " " +
+      "THEN 'true' ELSE 'false' END), " +
+      "'members', json(CASE WHEN (SELECT type FROM room) = 'Rooms::Direct' THEN (SELECT json_group_array(json_object('_key', u._key, 'name', u.name) " +
+      "ORDER BY CAST(u._key AS INTEGER), u._key) FROM memberships s JOIN users u ON u._key = s.user_id WHERE s.room_id = ?1) ELSE '[]' END)) " +
+      "AS j FROM facts f", [rk, user_key, MessagePresenter.VERSION + ":", known])
+    return nil if page.nil? || page["room"].nil?
 
-    page = rows[0]
     if page["same"]
       page["html"] = cached["html"]
     elsif !page["html"].nil?

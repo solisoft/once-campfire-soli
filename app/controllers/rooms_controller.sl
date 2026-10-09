@@ -36,7 +36,7 @@ class RoomsController < ApplicationController
     cacheable = at_message.nil? && !page["html"].nil? && !session_has("flash_notice") && !session_has("flash_alert")
     if cacheable
       full = PageCache.get(full_name)
-      return full["response"] if !full.nil? && full["key"] == full_key
+      return @_keep(full["response"]) if !full.nil? && full["key"] == full_key
     end
 
     @page_title = page["display_name"]
@@ -54,7 +54,7 @@ class RoomsController < ApplicationController
       "messages": RoomPage.messages_html(page, base), "csrf": csrf, "loaded_at": str(@room["updated_at"])
     }, content_sig)
     PageCache.set_bounded(full_name, {"key": full_key, "response": response}, "room_full", 64) if cacheable
-    response
+    @_keep(response)
   end
 
   # DELETE /rooms/:id

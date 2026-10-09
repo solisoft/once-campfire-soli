@@ -34,7 +34,12 @@ class UsersProfilesController < ApplicationController
     changes["password_digest"] = password_hash(attrs["password"]) unless attrs["password"].blank?
     if changes.keys.length > 0
       changes["updated_at"] = Clock.now
-      User.update(@_current_user_key, changes)
+      # @user.update: a taken email address leaves the profile as it was.
+      try
+        Db.update_row("users", @_current_user_key, changes)
+      catch error
+        throw error unless str(error).contains("UNIQUE constraint failed")
+      end
     end
 
     avatar = find_uploaded_file(req, "user[avatar]")

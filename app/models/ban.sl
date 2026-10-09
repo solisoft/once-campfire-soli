@@ -2,9 +2,7 @@ class Ban < Model
   static def banned?(ip_address)
     return false if ip_address.blank?
 
-    ip = ip_address
-    rows = @sdbql{ RETURN LENGTH(FOR b IN bans FILTER b.ip_address == #{ip} LIMIT 1 RETURN 1) }
-    Db.array(rows).length > 0 && rows[0] > 0
+    Db.value("SELECT EXISTS (SELECT 1 FROM bans WHERE ip_address = ?) AS v", [ip_address]) == 1
   end
 
   # Ban#ip_address_is_public: loopback, private and link-local addresses are refused.
@@ -27,11 +25,10 @@ class Ban < Model
     return nil unless Ban.public_ip?(ip)
 
     now = Clock.now
-    Ids.create(Ban, {"user_id": user_key, "ip_address": ip, "created_at": now, "updated_at": now})
+    Ids.create("bans", {"user_id": user_key, "ip_address": ip, "created_at": now, "updated_at": now})
   end
 
   static def delete_for_user(user_key)
-    uk = user_key
-    @sdbql{ FOR b IN bans FILTER b.user_id == #{uk} REMOVE b IN bans }
+    Db.exec("DELETE FROM bans WHERE user_id = ?", [user_key])
   end
 end

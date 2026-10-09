@@ -6,18 +6,25 @@ class MessagesController < ApplicationController
     halt(404, "") if page.nil?
     return @_head(204) if page["count"] == 0
 
-    {"status": 200, "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": page["html"]}
+    @_keep({"status": 200, "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": page["html"]})
   end
 
   # POST /rooms/:room_id/messages
   def create
-    found = Membership.with_room_and_members(@_current_user_key, req["params"]["room_id"])
-    return render("messages/room_not_found", {}, {"layout": false}) if found.nil?
+    room_key = req["params"]["room_id"]
+    file = find_uploaded_file(req, "message[attachment]")
+    # An upload is stored before its message, so a sender who is not a member is turned away
+    # first; Message.post checks membership for everything else.
+    if !file.nil? && Membership.find_for(@_current_user_key, room_key).nil?
+      return render("messages/room_not_found", {}, {"layout": false})
+    end
 
-    @room = found["room"]
     attrs = params["message"] ?? {}
-    attachment = Attachments.create_message_attachment(find_uploaded_file(req, "message[attachment]"))
-    created = Message.create_message(@room, @_current_user, attrs["body"], attachment, attrs["client_message_id"], RoomPage.base_url(req), found["members"])
+    attachment = Attachments.create_message_attachment(file)
+    created = Message.post(room_key, @_current_user, attrs["body"], attachment, attrs["client_message_id"], RoomPage.base_url(req))
+    return render("messages/room_not_found", {}, {"layout": false}) if created.nil?
+
+    @room = created["room"]
     message = created["message"]
     html = message["html"]
     Broadcasts.message_created(@room, created["members"], html)

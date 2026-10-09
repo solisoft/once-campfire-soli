@@ -103,6 +103,14 @@ class ApplicationController < Controller
     {"status": cached["status"], "headers": headers, "body": body}
   end
 
+  # Lets the server answer the same request again by itself (Soli's response cache): it keeps
+  # the response, keyed by the request line and headers (cookies included), until anything is
+  # committed to the database or 15 seconds pass, like the Rust port's response cache.
+  def _keep(response)
+    response["headers"]["Soli-Response-Cache"] = "15"
+    response
+  end
+
   def _render_marked(view, values)
     @marks = values
     @csrf = values["csrf"]

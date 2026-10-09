@@ -8,10 +8,10 @@
 #             [--only "room_show sidebar …"] [--gzip 1] [--proxy PATH/TO/soli-proxy]
 #             [--compress]
 #
-# The application gets the server CPUs and so does its database: SoliDB runs on the same
-# four hardware threads, in a fresh instance on its own port and data directory, because the
-# other ports' SQLite runs inside their process; so does a fresh SoliKV (Redis's role). SEED_DIR is the Rust port's parity seed
-# (parity/bin/seed build default); LOADGEN is once-campfire-elixir's bench/loadgen binary.
+# The application gets the server CPUs. Its database is SQLite, inside its process like the
+# other ports', in a fresh file (and blobs directory) under a temporary directory. SEED_DIR is
+# the Rust port's parity seed (parity/bin/seed build default); LOADGEN is once-campfire-elixir's
+# bench/loadgen binary.
 #
 # --proxy puts a Soli Proxy in front of the app, as in production, on the same CPUs and with
 # its compression on (it gzips what the reference's Rack::Deflater gzips); the load generator
@@ -20,15 +20,14 @@
 # --compress has Soli gzip its own responses (SOLI_COMPRESS=gzip, a Soli that has it), with the
 # compressed bodies it keeps, the way the reference's Rack::Deflater does in its config.ru.
 #
-# Ports: SoliDB 6799, SoliKV 6899, app 5299, proxy 5399/5398, or BENCH_DB_PORT, BENCH_KV_PORT,
-# BENCH_APP_PORT, BENCH_PROXY_PORT, BENCH_PROXY_TLS_PORT. A port already in use stops the run:
-# a test suite's SoliDB on 6799 would otherwise answer the health check in our SoliDB's place.
+# Ports: app 5299, proxy 5399/5398, or BENCH_APP_PORT, BENCH_PROXY_PORT, BENCH_PROXY_TLS_PORT.
+# A port already in use stops the run: another server would answer the health check.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ONLY="room_show messages_page sidebar search post_message" SEED="" LOADGEN="" CPUS=8-11 CLIENT_CPUS=12-15 WORKERS=4 SECS=4 CONC=16 REPS=2 GZIP=1 PROXY="" COMPRESS=""
 OUT="$ROOT/bench/results/$(date +%Y%m%d-%H%M%S)"
-DB_PORT=${BENCH_DB_PORT:-6799} KV_PORT=${BENCH_KV_PORT:-6899} APP_PORT=${BENCH_APP_PORT:-5299}
+APP_PORT=${BENCH_APP_PORT:-5299}
 PROXY_PORT=${BENCH_PROXY_PORT:-5399} PROXY_TLS_PORT=${BENCH_PROXY_TLS_PORT:-5398}
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -49,7 +48,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$SEED" ] && [ -n "$LOADGEN" ] || { echo "bench/run: --seed and --loadgen are required" >&2; exit 1; }
-for port in "$DB_PORT" "$KV_PORT" "$APP_PORT" ${PROXY:+"$PROXY_PORT" "$PROXY_TLS_PORT"}; do
+for port in "$APP_PORT" ${PROXY:+"$PROXY_PORT" "$PROXY_TLS_PORT"}; do
   if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then
     echo "bench/run: port $port is already in use (see BENCH_*_PORT above)" >&2; exit 1
   fi
@@ -59,8 +58,6 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/campfire-bench.XXXXXX")
 mkdir -p "$OUT"
 cleanup() {
   [ -n "${APP_PID:-}" ] && kill "$APP_PID" 2>/dev/null || true
-  [ -n "${DB_PID:-}" ] && kill "$DB_PID" 2>/dev/null || true
-  [ -n "${KV_PID:-}" ] && kill "$KV_PID" 2>/dev/null || true
   [ -n "${PROXY_PID:-}" ] && kill "$PROXY_PID" 2>/dev/null || true
   wait 2>/dev/null || true
   rm -rf "$WORK"
@@ -68,30 +65,16 @@ cleanup() {
 trap cleanup EXIT
 
 
-echo "bench: SoliDB on CPUs $CPUS, port $DB_PORT" >&2
-# From its own directory: solidb reads a .env in its working directory, and the app's
-# SOLIDB_HOST (a URL) would become its bind address.
-(cd "$WORK" && exec taskset -c "$CPUS" solidb --host 127.0.0.1 --port "$DB_PORT" --data-dir "$WORK/solidb" > "$WORK/solidb.log" 2>&1) &
-DB_PID=$!
-for _ in $(seq 600); do [ -f "$WORK/solidb/.admin_password" ] && curl -s -o /dev/null "localhost:$DB_PORT/_api/health" && break; sleep 0.1; done
-[ -f "$WORK/solidb/.admin_password" ] || { cat "$WORK/solidb.log" >&2; exit 1; }
-
-export SOLIDB_HOST="http://localhost:$DB_PORT" SOLIDB_DATABASE=campfire_bench SOLIDB_USERNAME=admin SOLI_DB_DRIVER=1
-SOLIDB_PASSWORD=$(cat "$WORK/solidb/.admin_password")
-export SOLIDB_PASSWORD
-curl -s -o /dev/null -u "admin:$SOLIDB_PASSWORD" -H 'Content-Type: application/json' -X POST \
-  "localhost:$DB_PORT/_api/database" -d '{"name":"campfire_bench"}'
-
-echo "bench: SoliKV on CPUs $CPUS, port $KV_PORT" >&2
-(cd "$WORK" && exec taskset -c "$CPUS" solikv --bind 127.0.0.1 --port "$KV_PORT" --rest-port 0 --dir "$WORK/solikv" > "$WORK/solikv.log" 2>&1) &
-KV_PID=$!
-export SOLIKV_RESP_HOST=127.0.0.1 SOLIKV_RESP_PORT=$KV_PORT
+export SOLI_DB_ADAPTER=sqlite DATABASE_URL="sqlite://$WORK/db/campfire.sqlite3" SOLI_DB_POOL_SIZE=$((WORKERS + 1))
+# Web Push off, as in bench/run-rust (no VAPID keys): a posted message queues no push.
+export VAPID_PUBLIC_KEY= VAPID_PRIVATE_KEY=
 
 # A failed setup step prints its log: cleanup deletes $WORK.
 step() { local log=$1; shift; "$@" > "$log" 2>&1 || { echo "bench/run: $* failed" >&2; tail -20 "$log" >&2; exit 1; }; }
 cd "$ROOT"
+step "$WORK/create.log" soli db:create
 step "$WORK/migrate.log" soli db:migrate up
-step "$WORK/import.log" bin/import-seed "$SEED" --database campfire_bench
+step "$WORK/import.log" bin/import-seed "$SEED"
 step "$WORK/after_import.log" soli db:seed . db/seeds/after_import.sl
 
 echo "bench: Soli on CPUs $CPUS, $WORKERS workers, port $APP_PORT" >&2
@@ -103,10 +86,8 @@ COLD_START_MS=$(( ($(date +%s%N) - STARTED) / 1000000 ))
 echo "bench: cold start until /up answers: $COLD_START_MS ms" >&2
 
 APP_SERVER_PID=$(fuser "$APP_PORT/tcp" 2>/dev/null | awk '{print $1}')
-DB_SERVER_PID=$(fuser "$DB_PORT/tcp" 2>/dev/null | awk '{print $1}')
-KV_SERVER_PID=$(fuser "$KV_PORT/tcp" 2>/dev/null | awk '{print $1}')
 BASE="http://127.0.0.1:$APP_PORT"
-PIDS="app:$APP_SERVER_PID solidb:$DB_SERVER_PID solikv:$KV_SERVER_PID"
+PIDS="app:$APP_SERVER_PID"
 
 if [ -n "$PROXY" ]; then
   echo "bench: Soli Proxy on CPUs $CPUS, port $PROXY_PORT, compression on" >&2
@@ -157,19 +138,22 @@ echo "bench: $PIDS: every thread on CPUs $CPUS" >&2
 {
   echo "date: $(date -Iseconds)"
   echo "host: $(uname -r), $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ //'), $(nproc) threads"
-  echo "server cpus: $CPUS (app and SoliDB); loadgen cpus: $CLIENT_CPUS; workers: $WORKERS"
-  echo "soli: $(soli --version 2>&1 | head -1); solidb: $(readlink -f "$(command -v solidb)")"
+  echo "server cpus: $CPUS (app, SQLite inside it); loadgen cpus: $CLIENT_CPUS; workers: $WORKERS, SQLite pool: $SOLI_DB_POOL_SIZE"
+  echo "soli: $(soli --version 2>&1 | head -1)"
   echo "seed: $(sha256sum "$SEED/db/production.sqlite3" | cut -d' ' -f1)"
   echo "app: $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)$(git -C "$ROOT" diff --quiet 2>/dev/null || echo ' (dirty)')"
   echo "workload: secs=$SECS conc=$CONC reps=$REPS"
   echo "accept-encoding: $([ "$GZIP" = 0 ] && echo identity || echo gzip)"
   [ -z "$COMPRESS" ] || echo "soli compression: SOLI_COMPRESS=$COMPRESS"
+  [ -z "${SOLI_RESPONSE_CACHE_MB:-}" ] || echo "SOLI_RESPONSE_CACHE_MB=$SOLI_RESPONSE_CACHE_MB"
   [ -z "$PROXY" ] || echo "proxy: $("$PROXY" --version 2>&1 | head -1), compression on, in front of the app"
   echo "cold start until /up: $COLD_START_MS ms"
 } > "$OUT/env.txt"
 "$ROOT/bench/measure" --base "$BASE" --seed "$SEED" --loadgen "$LOADGEN" --out "$OUT" \
   --pids "$PIDS" \
   --client-cpus "$CLIENT_CPUS" --secs "$SECS" --conc "$CONC" --reps "$REPS" --only "$ONLY" --gzip "$GZIP"
-cp "$WORK/app.log" "$OUT/app.log"
+# The log names the machine's address ("Local network: http://<ip>:<port>") and the checkout's
+# path: neither goes into results that may be published.
+grep -v "Local network:" "$WORK/app.log" | sed "s|$ROOT|.|g" > "$OUT/app.log"
 [ -z "$PROXY" ] || cp "$WORK/proxy.log" "$OUT/proxy.log"
 echo "bench: results in ${OUT#"$ROOT"/}" >&2

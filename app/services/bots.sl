@@ -41,28 +41,20 @@ class Bots
 
   # @room.users.active_bots, with a webhook, but the author.
   static def direct_room_bots(room_key, author_key)
-    rk = room_key
-    ak = author_key
-    rows = @sdbql{
-      FOR w IN webhooks FILTER w.user_id != #{ak}
-        FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == w.user_id
-          FOR u IN users FILTER u._key == m.user_id AND u.role == "bot" AND u.status == "active"
-            RETURN DISTINCT u._key
-    }
-    Db.array(rows)
+    Db.rows("SELECT DISTINCT json_quote(u._key) AS j FROM webhooks w JOIN memberships m ON m.room_id = ? AND m.user_id = w.user_id " +
+            "JOIN users u ON u._key = m.user_id AND u.role = 'bot' AND u.status = 'active' WHERE w.user_id != ?",
+            [room_key, author_key])
   end
 
   # @message.mentionees.active_bots: mentioned members of the room, with a webhook.
   static def mentioned_bots(room_key, user_keys)
-    rk = room_key
-    rows = @sdbql{
-      FOR k IN #{user_keys}
-        FOR w IN webhooks FILTER w.user_id == k
-          FOR m IN memberships FILTER m.room_id == #{rk} AND m.user_id == k
-            FOR u IN users FILTER u._key == k AND u.role == "bot" AND u.status == "active"
-              RETURN DISTINCT k
-    }
-    Db.array(rows)
+    return [] if user_keys.length == 0
+
+    found = Db.rows("SELECT DISTINCT json_quote(u._key) AS j FROM users u JOIN webhooks w ON w.user_id = u._key " +
+                    "JOIN memberships m ON m.room_id = ? AND m.user_id = u._key " +
+                    "WHERE u._key IN (" + Db.marks(user_keys) + ") AND u.role = 'bot' AND u.status = 'active'",
+                    [room_key] + user_keys)
+    user_keys.uniq.filter { |k| found.include?(k) }
   end
 
   # Webhook#deliver
@@ -132,10 +124,9 @@ class Bots
 
   # room.messages.create!(creator: bot).broadcast_create
   static def reply(bot, room_key, body, attachment, base_url)
-    found = Membership.with_room_and_members(bot["_key"], room_key)
-    return nil if found.nil?
+    created = Message.post(room_key, bot, body, attachment, nil, base_url ?? "")
+    return nil if created.nil?
 
-    created = Message.create_message(found["room"], bot, body, attachment, nil, base_url ?? "", found["members"])
-    Broadcasts.message_created(found["room"], created["members"], created["message"]["html"])
+    Broadcasts.message_created(created["room"], created["members"], created["message"]["html"])
   end
 end

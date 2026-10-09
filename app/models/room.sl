@@ -8,9 +8,7 @@ class Room < Model
   static def find_hash(key)
     return nil if key.nil?
 
-    k = str(key)
-    rows = @sdbql{ FOR r IN rooms FILTER r._key == #{k} LIMIT 1 RETURN r }
-    Db.first(rows)
+    Db.find_row("rooms", key)
   end
 
   static def open?(room)
@@ -38,8 +36,7 @@ class Room < Model
   # Room.create_for: the room, then memberships for the given users.
   static def create_for(type, name, creator_id, user_ids)
     now = Clock.now
-    room = Ids.create(Room, {"name": name, "type": type, "creator_id": creator_id, "created_at": now, "updated_at": now})
-    hash = Room.find_hash(room._key)
+    hash = Ids.create("rooms", {"name": name, "type": type, "creator_id": creator_id, "created_at": now, "updated_at": now})
     Membership.grant(hash, user_ids)
     Membership.grant(hash, User.active_ordered.map { |u| u["_key"] }) if type == Room.OPEN
     hash
@@ -47,57 +44,38 @@ class Room < Model
 
   # Room.original: the first room ever created.
   static def original
-    rows = @sdbql{ FOR r IN rooms SORT r.created_at, r._key LIMIT 1 RETURN r }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("rooms", "r") + " AS j FROM rooms r ORDER BY r.created_at, r._key LIMIT 1")
   end
 
   static def original_key
-    rows = @sdbql{ FOR r IN rooms SORT r.created_at, r._key LIMIT 1 RETURN r._key }
-    Db.first(rows)
+    Db.value("SELECT _key AS v FROM rooms ORDER BY created_at, _key LIMIT 1")
   end
 
   # Current.user.rooms.original
   static def default_for_user(user_key)
-    uk = user_key
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.user_id == #{uk}
-        FOR r IN rooms FILTER r._key == m.room_id
-          SORT r.created_at, r._key
-          LIMIT 1
-          RETURN r
-    }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("rooms", "r") + " AS j FROM memberships m JOIN rooms r ON r._key = m.room_id WHERE m.user_id = ? " +
+           "ORDER BY r.created_at, r._key LIMIT 1", [user_key])
   end
 
   # Current.user.rooms.last (RoomsController#index)
   static def last_for_user(user_key)
-    uk = user_key
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.user_id == #{uk}
-        FOR r IN rooms FILTER r._key == m.room_id
-          SORT r.created_at DESC, r._key DESC
-          LIMIT 1
-          RETURN r
-    }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("rooms", "r") + " AS j FROM memberships m JOIN rooms r ON r._key = m.room_id WHERE m.user_id = ? " +
+           "ORDER BY r.created_at DESC, r._key DESC LIMIT 1", [user_key])
   end
 
   static def touch(key, now = nil)
-    t = now ?? Clock.now
-    k = key
-    @sdbql{ FOR r IN rooms FILTER r._key == #{k} UPDATE r WITH {updated_at: #{t}} IN rooms }
+    Db.exec("UPDATE rooms SET updated_at = ? WHERE _key = ?", [now ?? Clock.now, str(key)])
   end
 
   static def open_room_keys
-    rows = @sdbql{ FOR r IN rooms FILTER r.type == "Rooms::Open" RETURN r._key }
-    Db.array(rows)
+    Db.rows("SELECT json_quote(_key) AS j FROM rooms WHERE type = 'Rooms::Open'")
   end
 
   # Becoming an open room grants everyone access (Rooms::Open after_save_commit).
   static def change_type(room, type)
     return room if room["type"] == type
 
-    Room.update(room["_key"], {"type": type, "updated_at": Clock.now})
+    Db.update_row("rooms", room["_key"], {"type": type, "updated_at": Clock.now})
     updated = Room.find_hash(room["_key"])
     Membership.grant(updated, User.active_ordered.map { |u| u["_key"] }) if type == Room.OPEN
     updated
@@ -107,9 +85,7 @@ class Room < Model
   # when the room has just become open.
   static def update_settings(room, type, name)
     k = room["_key"]
-    now = Clock.now
-    new_name = name ?? room["name"]
-    @sdbql{ FOR r IN rooms FILTER r._key == #{k} UPDATE r WITH {type: #{type}, name: #{new_name}, updated_at: #{now}} IN rooms }
+    Db.update_row("rooms", k, {"type": type, "name": name ?? room["name"], "updated_at": Clock.now})
     updated = Room.find_hash(k)
     Membership.grant(updated, User.active_ordered.map { |u| u["_key"] }) if type == Room.OPEN && room["type"] != Room.OPEN
     updated
@@ -117,18 +93,12 @@ class Room < Model
 
   # The users of a room in membership order (room.users), for direct room sidebars.
   static def users_by_membership(room_key)
-    k = room_key
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.room_id == #{k}
-        FOR u IN users FILTER u._key == m.user_id
-          SORT m.created_at, m._key
-          RETURN u
-    }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM memberships m JOIN users u ON u._key = m.user_id WHERE m.room_id = ? " +
+            "ORDER BY m.created_at, m._key", [room_key])
   end
 
   static def rename(room, name)
-    Room.update(room["_key"], {"name": name, "updated_at": Clock.now})
+    Db.update_row("rooms", room["_key"], {"name": name, "updated_at": Clock.now})
     Room.find_hash(room["_key"])
   end
 
@@ -136,42 +106,28 @@ class Room < Model
   static def destroy_room(room)
     k = room["_key"]
     Message.destroy_all_in_room(k)
-    @sdbql{ FOR m IN memberships FILTER m.room_id == #{k} REMOVE m IN memberships }
-    @sdbql{ FOR r IN rooms FILTER r._key == #{k} REMOVE r IN rooms }
+    Db.exec("DELETE FROM memberships WHERE room_id = ?", [k])
+    Db.delete_row("rooms", k)
   end
 
   # The users of a room, ordered by name.
   static def users(room_key)
-    k = room_key
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.room_id == #{k}
-        FOR u IN users FILTER u._key == m.user_id
-          SORT TO_NUMBER(u._key), u._key
-          RETURN u
-    }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM memberships m JOIN users u ON u._key = m.user_id WHERE m.room_id = ? " +
+            "ORDER BY CAST(u._key AS INTEGER), u._key", [room_key])
   end
 
   static def user_keys(room_key)
-    k = room_key
-    rows = @sdbql{ FOR m IN memberships FILTER m.room_id == #{k} RETURN m.user_id }
-    Db.array(rows)
+    Db.rows("SELECT json_quote(user_id) AS j FROM memberships WHERE room_id = ?", [room_key])
   end
 
   # Rooms::Direct.find_or_create_for: the direct room whose members are exactly these users.
   static def find_direct_for(user_keys)
     keys = user_keys.uniq
-    n = keys.length
-    first = keys[0]
-    rows = @sdbql{
-      FOR m IN memberships FILTER m.user_id == #{first}
-        FOR r IN rooms FILTER r._key == m.room_id AND r.type == "Rooms::Direct"
-          LET members = (FOR o IN memberships FILTER o.room_id == r._key RETURN o.user_id)
-          FILTER LENGTH(members) == #{n} AND LENGTH(MINUS(members, #{keys})) == 0
-          LIMIT 1
-          RETURN r
-    }
-    Db.first(rows)
+    binds = [keys[0], keys.length] + keys
+    Db.row("SELECT " + Db.json("rooms", "r") + " AS j FROM memberships m JOIN rooms r ON r._key = m.room_id AND r.type = 'Rooms::Direct' " +
+           "WHERE m.user_id = ? AND (SELECT count(*) FROM memberships o WHERE o.room_id = r._key) = ? " +
+           "AND NOT EXISTS (SELECT 1 FROM memberships o WHERE o.room_id = r._key AND o.user_id NOT IN (" + Db.marks(keys) + ")) " +
+           "LIMIT 1", binds)
   end
 
   # RoomsHelper#room_display_name
@@ -185,6 +141,19 @@ class Room < Model
 
     me = User.find_hash(for_user_key)
     me.nil? ? "" : me["name"]
+  end
+
+  # What a message shows for its room: Room.display_name(room, nil), from the names of the
+  # room's users in Room.users order, without a query.
+  static def message_room_name(room, user_names)
+    Room.direct?(room) ? Room.to_sentence(user_names) : room["name"]
+  end
+
+  # The room and its users' names, in Room.users order: what Room.message_room_name needs.
+  static def with_member_names(key)
+    Db.row("SELECT json_object('room', " + Db.json("rooms", "r") + ", 'names', json((SELECT json_group_array(u.name ORDER BY " +
+           "CAST(u._key AS INTEGER), u._key) FROM memberships m JOIN users u ON u._key = m.user_id WHERE m.room_id = r._key))) " +
+           "AS j FROM rooms r WHERE r._key = ?", [str(key)])
   end
 
   static def to_sentence(words)

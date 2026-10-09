@@ -1,47 +1,31 @@
-# users/sidebars#show in one round trip: the user's visible memberships with their rooms,
-# the members of each direct room, and the people to offer a first ping with.
+# users/sidebars#show in one query: the user's visible memberships with their rooms, the
+# members of each direct room, and the people to offer a first ping with.
 class Sidebar
   static DIRECT_PLACEHOLDERS: Int = 20
 
   # known: the signature of the data the caller already rendered; when it still holds, the
-  # rows don't come back ("same": true).
-  # Placeholders are SLICEd rather than LIMITed: a LIMIT taken from a variable comes back
-  # empty on a collection scan (solidb, 2026-10).
+  # rows aren't parsed ("same": true).
   static def load(user_key, known = "")
-    uk = user_key
-    limit = Sidebar.DIRECT_PLACEHOLDERS
-    rows = @sdbql{
-      LET memberships = (
-        FOR m IN memberships FILTER m.user_id == #{uk} AND m.involvement != "invisible"
-          FOR r IN rooms FILTER r._key == m.room_id
-            LET members = r.type == "Rooms::Direct" ? (
-              FOR o IN memberships FILTER o.room_id == r._key
-                FOR u IN users FILTER u._key == o.user_id
-                  SORT TO_NUMBER(u._key), u._key
-                  RETURN {_key: u._key, name: u.name, updated_at: u.updated_at}
-            ) : []
-            SORT LOWER(r.name), r._key
-            RETURN {_key: m._key, unread_at: m.unread_at, updated_at: m.updated_at, room: r, members: members}
-      )
-      LET direct_user_ids = UNIQUE(FLATTEN(FOR m IN memberships FILTER m.room.type == "Rooms::Direct" RETURN m.members[*]._key))
-      LET in_directs = (
-        FOR m IN memberships FILTER m.user_id == #{uk}
-          FOR r IN rooms FILTER r._key == m.room_id AND r.type == "Rooms::Direct"
-            FOR o IN memberships FILTER o.room_id == r._key
-              RETURN DISTINCT o.user_id
-      )
-      LET excluded = UNION_DISTINCT(in_directs, [#{uk}])
-      LET placeholder_limit = MAX([#{limit} - LENGTH(excluded), 0])
-      LET placeholders = SLICE((
-        FOR u IN users FILTER u.status == "active" AND u._key NOT IN excluded
-          SORT u.created_at, u._key
-          RETURN u
-      ), 0, placeholder_limit)
-      LET sig = MD5(TO_STRING([memberships, placeholders]))
-      RETURN sig == #{known} ? {same: true, sig: sig} : {same: false, sig: sig, memberships: memberships, placeholders: placeholders}
-    }
-    return {"same": false, "sig": "", "memberships": [], "placeholders": []} unless Db.array(rows).length > 0
+    text = Db.value("WITH mine AS (SELECT * FROM memberships WHERE user_id = ?1), " +
+      "excluded AS (SELECT o.user_id AS id FROM mine m JOIN rooms r ON r._key = m.room_id AND r.type = 'Rooms::Direct' " +
+      "JOIN memberships o ON o.room_id = r._key UNION SELECT ?1), " +
+      "list AS (SELECT json_object('_key', m._key, 'unread_at', m.unread_at, 'updated_at', m.updated_at, 'room', " + Db.json("rooms", "r") + ", " +
+      "'members', json(CASE WHEN r.type = 'Rooms::Direct' THEN (SELECT json_group_array(json_object('_key', u._key, 'name', u.name, " +
+      "'updated_at', u.updated_at) ORDER BY CAST(u._key AS INTEGER), u._key) FROM memberships o JOIN users u ON u._key = o.user_id " +
+      "WHERE o.room_id = r._key) ELSE '[]' END)) AS j, lower(r.name) AS n, r._key AS k " +
+      "FROM mine m JOIN rooms r ON r._key = m.room_id WHERE m.involvement IS NOT 'invisible'), " +
+      "places AS (SELECT " + Db.json("users", "u") + " AS j, u.created_at AS t, u._key AS k FROM users u " +
+      "WHERE u.status = 'active' AND u._key NOT IN (SELECT id FROM excluded) ORDER BY u.created_at, u._key " +
+      "LIMIT max(?2 - (SELECT count(*) FROM excluded), 0)) " +
+      "SELECT '{\"memberships\":[' || coalesce((SELECT group_concat(j, ',' ORDER BY n, k) FROM list), '') || " +
+      "'],\"placeholders\":[' || coalesce((SELECT group_concat(j, ',' ORDER BY t, k) FROM places), '') || ']}' AS v",
+      [user_key, Sidebar.DIRECT_PLACEHOLDERS])
+    sig = md5(text)
+    return {"same": true, "sig": sig} if sig == known
 
-    rows[0]
+    data = json_parse(text)
+    data["same"] = false
+    data["sig"] = sig
+    data
   end
 end

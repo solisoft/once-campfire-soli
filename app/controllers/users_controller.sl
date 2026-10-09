@@ -20,12 +20,10 @@ class UsersController < ApplicationController
   def create
     attrs = permit(params["user"] ?? {}, {"name": true, "email_address": true, "password": true})
     user = User.create_user(attrs)
-    if user._errors && user._errors.length > 0
-      return redirect("/session/new?email_address=" + url_encode(attrs["email_address"].to_s))
-    end
+    return redirect("/session/new?email_address=" + url_encode(attrs["email_address"].to_s)) if user.nil?
 
-    Users.attach_avatar(user._key, find_uploaded_file(req, "user[avatar]"))
-    Authentication.start_session_for(req, User.find_hash(user._key))
+    Users.attach_avatar(user["_key"], find_uploaded_file(req, "user[avatar]"))
+    Authentication.start_session_for(req, User.find_hash(user["_key"]))
     redirect("/")
   end
 

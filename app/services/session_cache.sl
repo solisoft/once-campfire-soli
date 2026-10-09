@@ -1,6 +1,6 @@
 # Sessions kept in memory: each worker remembers the account, session and user a token
 # resolved to for SESSION_CACHE_TTL_MS (default 2000; 0 disables), so most requests
-# authenticate without a SoliDB round trip.
+# authenticate without a query.
 #
 # The cost is that a change made elsewhere (a sign-out, ban or deactivation in another
 # worker, a role or account edit) reaches this worker within the TTL rather than at once.

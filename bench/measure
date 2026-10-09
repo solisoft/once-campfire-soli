@@ -4,7 +4,7 @@
 # checked for 200 and a body. Used by bench/run for this app and on its own for the others.
 #
 #   bench/measure --base http://127.0.0.1:PORT --seed SEED_DIR --loadgen PATH --out DIR
-#                 [--pids "app:PID solidb:PID …"] [--client-cpus 12-15] [--secs 4] [--conc 16]
+#                 [--pids "app:PID …"] [--client-cpus 12-15] [--secs 4] [--conc 16]
 #                 [--reps 2] [--only "room_show sidebar …"] [--gzip 1]
 #
 # Workloads: room_show messages_page sidebar search post_message (the default), and up (the

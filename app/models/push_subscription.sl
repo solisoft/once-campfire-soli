@@ -5,27 +5,16 @@ class PushSubscription < Model
   ]
 
   static def for_user(user_key)
-    uk = user_key
-    rows = @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} SORT p.created_at, p._key RETURN p }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("push_subscriptions", "p") + " AS j FROM push_subscriptions p WHERE p.user_id = ? ORDER BY p.created_at, p._key", [user_key])
   end
 
   static def find_for_user(user_key, key)
-    uk = user_key
-    k = str(key)
-    rows = @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} AND p._key == #{k} LIMIT 1 RETURN p }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("push_subscriptions", "p") + " AS j FROM push_subscriptions p WHERE p.user_id = ? AND p._key = ?", [user_key, str(key)])
   end
 
   static def find_matching(user_key, endpoint, p256dh, auth)
-    uk = user_key
-    rows = @sdbql{
-      FOR p IN push_subscriptions
-        FILTER p.user_id == #{uk} AND p.endpoint == #{endpoint} AND p.p256dh_key == #{p256dh} AND p.auth_key == #{auth}
-        LIMIT 1
-        RETURN p
-    }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("push_subscriptions", "p") + " AS j FROM push_subscriptions p WHERE p.user_id = ? AND p.endpoint = ? " +
+           "AND p.p256dh_key = ? AND p.auth_key = ? LIMIT 1", [user_key, endpoint, p256dh, auth])
   end
 
   # Push::Subscription#validate_endpoint_url: https, port 443, a known push service.
@@ -45,24 +34,19 @@ class PushSubscription < Model
   end
 
   static def touch(key)
-    k = key
-    now = Clock.now
-    @sdbql{ FOR p IN push_subscriptions FILTER p._key == #{k} UPDATE p WITH {updated_at: #{now}} IN push_subscriptions }
+    Db.update_row("push_subscriptions", key, {"updated_at": Clock.now})
   end
 
   static def destroy_key(key)
-    k = key
-    @sdbql{ FOR p IN push_subscriptions FILTER p._key == #{k} REMOVE p IN push_subscriptions }
+    Db.delete_row("push_subscriptions", key)
   end
 
   static def destroy_by_endpoint(user_key, endpoint)
-    uk = user_key
-    @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} AND p.endpoint == #{endpoint} REMOVE p IN push_subscriptions }
+    Db.exec("DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?", [user_key, endpoint])
   end
 
   static def destroy_for_user(user_key)
-    uk = user_key
-    @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} REMOVE p IN push_subscriptions }
+    Db.exec("DELETE FROM push_subscriptions WHERE user_id = ?", [user_key])
   end
 
   # @push_subscriptions.create: the subscription, or nil when the endpoint is refused.
@@ -70,21 +54,18 @@ class PushSubscription < Model
     return nil unless PushSubscription.endpoint_error(endpoint).nil?
 
     now = Clock.now
-    Ids.create(PushSubscription, {"user_id": user_key, "endpoint": endpoint, "p256dh_key": p256dh, "auth_key": auth,
+    Ids.create("push_subscriptions", {"user_id": user_key, "endpoint": endpoint, "p256dh_key": p256dh, "auth_key": auth,
                                   "user_agent": user_agent, "created_at": now, "updated_at": now})
   end
 
   static def destroy_for(user_key, key)
-    uk = user_key
-    k = str(key)
-    @sdbql{ FOR p IN push_subscriptions FILTER p.user_id == #{uk} AND p._key == #{k} REMOVE p IN push_subscriptions }
+    Db.exec("DELETE FROM push_subscriptions WHERE user_id = ? AND _key = ?", [user_key, str(key)])
   end
 
   # The subscription with the badge its notifications carry: user.memberships.unread.count.
   static def with_badge(subscription)
-    uk = subscription["user_id"]
-    rows = @sdbql{ RETURN LENGTH(FOR m IN memberships FILTER m.user_id == #{uk} AND m.unread_at != null RETURN 1) }
-    subscription["badge"] = Db.first(rows) ?? 0
+    subscription["badge"] = Db.value("SELECT count(*) AS v FROM memberships WHERE user_id = ? AND unread_at IS NOT NULL",
+                                     [subscription["user_id"]])
     subscription
   end
 end

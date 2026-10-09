@@ -18,12 +18,13 @@ class FirstRunsController < ApplicationController
     attrs = params["user"] ?? {}
     attrs["role"] = "administrator"
     Account.create_singleton("Campfire")
-    user = Ids.create(User, User.build_attributes(attrs))
-    halt(422, "") if user._errors && user._errors.length > 0
+    user = User.insert(attrs)
+    halt(422, "") if user.nil?
 
-    Users.attach_avatar(user._key, find_uploaded_file(req, "user[avatar]"))
-    Room.create_for(Room.OPEN, "All Talk", user._key, [user._key])
-    Authentication.start_session_for(req, User.find_hash(user._key))
+    key = user["_key"]
+    Users.attach_avatar(key, find_uploaded_file(req, "user[avatar]"))
+    Room.create_for(Room.OPEN, "All Talk", key, [key])
+    Authentication.start_session_for(req, User.find_hash(key))
     redirect("/")
   end
 end

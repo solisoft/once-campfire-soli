@@ -1,12 +1,8 @@
-# Search text for the SoliDB fulltext index: lowercase word tokens. The reference tokenizes
-# with FTS5 porter, which also stems; this matches whole words only.
+# The words of a search, lowercase, as SearchesController#query keeps them (word characters
+# only). FTS5's porter tokenizer stems them, and the index, itself.
 class Stemmer
   static def tokens(text)
     Regex.find_all("[\\p{L}\\p{N}_]+", (text ?? "").downcase).map { |m| m["match"] }
-  end
-
-  static def index_text(text)
-    Stemmer.tokens(text).join(" ")
   end
 
   static def query_terms(query)

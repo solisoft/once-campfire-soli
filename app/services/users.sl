@@ -7,7 +7,7 @@ class Users
 
     user = User.find_hash(user_key)
     Attachments.delete_image_set(user["avatar"]) unless user.nil?
-    User.update(user_key, {"avatar": Attachments.create_image_set(file, Users.AVATAR_VARIANTS), "updated_at": Clock.now})
+    Db.update_row("users", user_key, {"avatar": Attachments.create_image_set(file, Users.AVATAR_VARIANTS), "updated_at": Clock.now})
   end
 
   static def remove_avatar(user_key)
@@ -15,6 +15,6 @@ class Users
     return nil if user.nil? || user["avatar"].nil?
 
     Attachments.delete_image_set(user["avatar"])
-    User.update(user_key, {"avatar": nil, "updated_at": Clock.now})
+    Db.update_row("users", user_key, {"avatar": nil, "updated_at": Clock.now})
   end
 end

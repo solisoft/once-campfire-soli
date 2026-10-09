@@ -27,10 +27,10 @@ class AccountsBotsController < ApplicationController
     @_ensure_can_administer
     attrs = @_bot_params
     bot = User.create_user({"name": attrs["name"], "role": "bot", "bot_token": User.generate_bot_token})
-    halt(422, "") if bot._errors && bot._errors.length > 0
+    halt(422, "") if bot.nil?
 
-    Users.attach_avatar(bot._key, find_uploaded_file(req, "user[avatar]"))
-    Webhook.set_url(bot._key, attrs["webhook_url"])
+    Users.attach_avatar(bot["_key"], find_uploaded_file(req, "user[avatar]"))
+    Webhook.set_url(bot["_key"], attrs["webhook_url"])
     redirect("/account/bots")
   end
 
@@ -57,7 +57,7 @@ class AccountsBotsController < ApplicationController
     Webhook.set_url(bot["_key"], attrs["webhook_url"])
     fields = {"updated_at": Clock.now}
     fields["name"] = attrs["name"] unless attrs["name"].nil?
-    User.update(bot["_key"], fields)
+    Db.update_row("users", bot["_key"], fields)
     Users.attach_avatar(bot["_key"], find_uploaded_file(req, "user[avatar]"))
     redirect("/account/bots")
   end

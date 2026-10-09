@@ -21,17 +21,19 @@ class MessagesByBotsController < ApplicationController
 
   # POST /rooms/:room_id/:bot_key/messages — 201 with the message's Location.
   def create
-    found = Membership.with_room_and_members(@_current_user_key, req["params"]["room_id"])
-    return @_head(404) if found.nil?
+    room_key = req["params"]["room_id"]
+    return @_head(404) if Membership.find_for(@_current_user_key, room_key).nil?
 
     file = find_uploaded_file(req, "attachment")
     body = BotApi.raw_body(req)
     return @_head(422) if file.nil? && body.blank?
 
-    @room = found["room"]
     base = RoomPage.base_url(req)
     attachment = Attachments.create_message_attachment(file)
-    created = Message.create_message(@room, @_current_user, attachment.nil? ? body : nil, attachment, nil, base, found["members"])
+    created = Message.post(room_key, @_current_user, attachment.nil? ? body : nil, attachment, nil, base)
+    return @_head(404) if created.nil?
+
+    @room = created["room"]
     message = created["message"]
     Broadcasts.message_created(@room, created["members"], message["html"])
     Bots.deliver_webhooks(@room, message, @_current_user_key)

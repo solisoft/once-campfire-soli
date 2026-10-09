@@ -3,8 +3,7 @@ class Account < Model
   static KEY: String = "campfire"
 
   static def current
-    rows = @sdbql{ FOR a IN accounts FILTER a._key == "campfire" RETURN a }
-    Db.first(rows)
+    Db.find_row("accounts", Account.KEY)
   end
 
   static def exists?
@@ -13,11 +12,11 @@ class Account < Model
 
   static def create_singleton(name)
     now = Clock.now
-    Account.create({
-      "name": name, "join_code": Account.generate_join_code, "custom_styles": nil,
+    Db.insert("accounts", {
+      "_key": Account.KEY, "name": name, "join_code": Account.generate_join_code, "custom_styles": nil,
       "settings": {"restrict_room_creation_to_administrators": false},
       "logo": nil, "created_at": now, "updated_at": now
-    }, {"key": Account.KEY})
+    })
   end
 
   static def generate_join_code
@@ -32,7 +31,7 @@ class Account < Model
 
   static def update_fields(fields)
     fields["updated_at"] = Clock.now
-    Account.update(Account.KEY, fields)
+    Db.update_row("accounts", Account.KEY, fields)
   end
 
   static def restrict_room_creation?(account)

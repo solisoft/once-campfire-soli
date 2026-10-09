@@ -13,11 +13,11 @@ class MessagePusher
       {"title": name, "body": message["plain_text"], "path": "/rooms/" + room["_key"]} :
       {"title": room["name"], "body": name + ": " + message["plain_text"], "path": "/rooms/" + room["_key"]}
     user_ids = item["user_ids"] ?? []
-    rows = Db.array(@sdbql{
-      FOR p IN push_subscriptions FILTER p.user_id IN #{user_ids}
-        LET badge = LENGTH(FOR m IN memberships FILTER m.user_id == p.user_id AND m.unread_at != null RETURN 1)
-        RETURN MERGE(p, {badge: badge})
-    })
+    return nil if user_ids.length == 0
+
+    rows = Db.rows("SELECT json_object(" + Db.fields("push_subscriptions", "p") + ", 'badge', " +
+                   "(SELECT count(*) FROM memberships m WHERE m.user_id = p.user_id AND m.unread_at IS NOT NULL)) AS j " +
+                   "FROM push_subscriptions p WHERE p.user_id IN (" + Db.marks(user_ids) + ")", user_ids)
     for subscription in rows
       WebPush.deliver(subscription, payload)
     end

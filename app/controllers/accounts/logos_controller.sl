@@ -10,7 +10,7 @@ class AccountsLogosController < ApplicationController
                "Content-Type": "image/png", "Content-Disposition": "inline"}
     logo = account.nil? ? nil : account["logo"]
     variant = logo.nil? ? nil : logo[small ? "small_blob_id" : "large_blob_id"]
-    return Attachments.db.blob_response(Attachments.COLLECTION, variant, req, headers) unless variant.nil?
+    return Attachments.response(variant, req, headers) unless variant.nil?
 
     file = small ? "app-icon-192.png" : "app-icon.png"
     {"status": 200, "headers": headers, "body": slurp("reference/app/assets/images/logos/" + file, "binary")}

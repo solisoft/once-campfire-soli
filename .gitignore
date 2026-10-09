@@ -41,3 +41,6 @@ coverage/
 tmp-*.log
 tmp/
 public/assets/
+
+# SQLite database and attachment files
+/storage/

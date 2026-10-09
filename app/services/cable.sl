@@ -5,7 +5,7 @@
 # must echo. Broadcasting rebuilds the identifier the frontend's JSON.stringify produces
 # for that stream's subscribers, so a broadcast is one channel fan-out.
 #
-# Presence subscriptions are remembered per connection in a SoliKV set, so a closed socket
+# Presence subscriptions are remembered per connection (cable_presences), so a closed socket
 # marks its rooms absent as PresenceChannel#unsubscribed would.
 class Cable
   static GUARDED_SUFFIX: String = ":messages"
@@ -60,11 +60,11 @@ class Cable
   end
 
   # User#close_remote_connections: every socket of the user, told whether to reconnect.
-  # Sockets are tracked per user in SoliKV (ws_clients_in is a stub in Soli 2.x).
+  # Sockets are tracked per user in cable_connections (ws_clients_in is a stub in Soli 2.x).
   static def disconnect_user(user_key, reconnect)
-    clients = KV.smembers("campfire:cable:user:" + user_key) rescue []
+    clients = Db.rows("SELECT json_quote(connection_id) AS j FROM cable_connections WHERE user_id = ?", [user_key])
     payload = json_stringify({"type": "disconnect", "reason": "remote", "reconnect": reconnect})
-    for id in (clients.is_a?("array") ? clients : [])
+    for id in clients
       ws_send(id, payload) rescue nil
       ws_close(id, "remote") rescue nil
     end
@@ -106,24 +106,20 @@ class Cable
       return {"send": json_stringify({"type": "disconnect", "reason": "unauthorized", "reconnect": false}), "close": "unauthorized"}
     end
 
-    KV.sadd("campfire:cable:user:" + user["_key"], event["connection_id"]) rescue nil
-    KV.set("campfire:cable:connection:" + event["connection_id"], user["_key"], 86400) rescue nil
+    Db.exec("INSERT OR REPLACE INTO cable_connections (connection_id, user_id, created_at) VALUES (?, ?, ?)",
+            [event["connection_id"], user["_key"], Clock.now])
     {"send": json_stringify({"type": "welcome"})}
   end
 
   static def disconnect(event)
-    user_key = KV.get("campfire:cable:connection:" + event["connection_id"]) rescue nil
-    unless user_key.nil?
-      KV.srem("campfire:cable:user:" + user_key, event["connection_id"]) rescue nil
-      KV.delete("campfire:cable:connection:" + event["connection_id"]) rescue nil
+    id = event["connection_id"]
+    Db.exec("DELETE FROM cable_connections WHERE connection_id = ?", [id])
+    memberships = Db.rows("SELECT " + Db.json("memberships", "m") + " AS j FROM cable_presences p " +
+                          "JOIN memberships m ON m._key = p.membership_id WHERE p.connection_id = ?", [id])
+    for membership in memberships
+      Membership.disconnected(membership)
     end
-    key = "campfire:cable:presence:" + event["connection_id"]
-    keys = KV.smembers(key) rescue []
-    for membership_key in (keys ?? [])
-      membership = Membership.find_hash(membership_key)
-      Membership.disconnected(membership) unless membership.nil?
-    end
-    KV.delete(key) rescue nil
+    Db.exec("DELETE FROM cable_presences WHERE connection_id = ?", [id])
     {}
   end
 
@@ -222,12 +218,10 @@ class Cable
   end
 
   static def remember_presence(connection_id, membership_key, present)
-    key = "campfire:cable:presence:" + connection_id
     if present
-      KV.sadd(key, membership_key) rescue nil
-      KV.expire(key, 86400) rescue nil
+      Db.exec("INSERT OR IGNORE INTO cable_presences (connection_id, membership_id) VALUES (?, ?)", [connection_id, membership_key])
     else
-      KV.srem(key, membership_key) rescue nil
+      Db.exec("DELETE FROM cable_presences WHERE connection_id = ? AND membership_id = ?", [connection_id, membership_key])
     end
   end
 

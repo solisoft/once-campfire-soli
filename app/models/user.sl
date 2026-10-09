@@ -15,65 +15,63 @@ class User < Model
     email.nil? ? nil : email.trim.downcase
   end
 
-  # User.create! plus after_create_commit :grant_membership_to_open_rooms
+  # User.create! plus after_create_commit :grant_membership_to_open_rooms. nil when the email
+  # address (or the bot token) is taken.
   static def create_user(attrs)
-    user = Ids.create(User, User.build_attributes(attrs))
-    return user if user._errors && user._errors.length > 0
-
-    Membership.grant_open_rooms_to(user._key)
+    user = User.insert(attrs)
+    Membership.grant_open_rooms_to(user["_key"]) unless user.nil?
     user
+  end
+
+  static def insert(attrs)
+    try
+      return Ids.create("users", User.build_attributes(attrs))
+    catch error
+      throw error unless str(error).contains("UNIQUE constraint failed: users.")
+    end
+    nil
   end
 
   static def find_hash(key)
     return nil if key.nil?
 
-    k = str(key)
-    rows = @sdbql{ FOR u IN users FILTER u._key == #{k} LIMIT 1 RETURN u }
-    Db.first(rows)
+    Db.find_row("users", key)
   end
 
   static def find_many(keys)
     return [] if keys.length == 0
 
-    rows = @sdbql{ FOR u IN users FILTER u._key IN #{keys} RETURN u }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u._key IN (" + Db.marks(keys) + ")", keys)
   end
 
   static def active_ordered
-    rows = @sdbql{ FOR u IN users FILTER u.status == "active" SORT LOWER(u.name), u._key RETURN u }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u.status = 'active' ORDER BY lower(u.name), u._key")
   end
 
   static def active_without_bots_ordered
-    rows = @sdbql{ FOR u IN users FILTER u.status == "active" AND u.role != "bot" SORT LOWER(u.name), u._key RETURN u }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u.status = 'active' AND u.role != 'bot' ORDER BY lower(u.name), u._key")
   end
 
   static def any?
-    rows = @sdbql{ FOR u IN users LIMIT 1 RETURN 1 }
-    Db.array(rows).length > 0
+    Db.value("SELECT EXISTS (SELECT 1 FROM users) AS v") == 1
   end
 
   static def authenticate_by(email, password)
     return nil if email.blank? || password.blank?
 
-    e = User.normalize_email(email)
-    rows = @sdbql{ FOR u IN users FILTER u.email_address == #{e} AND u.status == "active" LIMIT 1 RETURN u }
-    return nil unless Db.array(rows).length > 0
-
-    user = rows[0]
-    return nil if user["password_digest"].nil?
+    user = Db.row("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u.email_address = ? AND u.status = 'active'",
+                  [User.normalize_email(email)])
+    return nil if user.nil? || user["password_digest"].nil?
 
     password_verify(password, user["password_digest"]) ? user : nil
   end
 
   static def first_administrator
-    rows = @sdbql{ FOR u IN users FILTER u.role == "administrator" SORT u._key LIMIT 1 RETURN u }
-    Db.first(rows)
+    Db.row("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u.role = 'administrator' ORDER BY u._key LIMIT 1")
   end
 
   static def touch(key)
-    User.update(key, {"updated_at": Clock.now})
+    Db.update_row("users", key, {"updated_at": Clock.now})
   end
 
   # --- presentation ---------------------------------------------------------------------
@@ -169,8 +167,7 @@ class User < Model
 
   # User.active_bots.ordered
   static def active_bots_ordered
-    rows = @sdbql{ FOR u IN users FILTER u.status == "active" AND u.role == "bot" SORT LOWER(u.name), u._key RETURN u }
-    Db.array(rows)
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u.status = 'active' AND u.role = 'bot' ORDER BY lower(u.name), u._key")
   end
 
   # User.active_bots.find
@@ -191,49 +188,32 @@ class User < Model
 
   # AccountsController#account_users.ordered.without_bots: administrators also see the banned.
   static def account_users_ordered(with_banned)
-    statuses = with_banned ? ["active", "banned"] : ["active"]
-    rows = @sdbql{ FOR u IN users FILTER u.status IN #{statuses} AND u.role != "bot" SORT LOWER(u.name), u._key RETURN u }
-    Db.array(rows)
+    statuses = with_banned ? "'active', 'banned'" : "'active'"
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u.status IN (" + statuses + ") AND u.role != 'bot' " +
+            "ORDER BY lower(u.name), u._key")
   end
 
   # Autocompletable::UsersController: active users (of a room when room_key is given) whose
   # name contains query, ignoring case (SQLite's LIKE), ordered by name, one page of them.
   static def autocompletable(room_key, query, offset, limit)
-    q = query.to_s
+    pattern = "%" + query.to_s + "%"
     if room_key.nil?
-      rows = @sdbql{
-        LET found = (
-          FOR u IN users FILTER u.status == "active"
-            FILTER #{q} == "" OR LIKE(u.name, CONCAT("%", #{q}, "%"), true)
-            SORT LOWER(u.name), u._key
-            RETURN u
-        )
-        RETURN SLICE(found, #{offset}, #{limit})
-      }
-      return Db.first(rows) ?? []
+      return Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM users u WHERE u.status = 'active' AND u.name LIKE ? " +
+                     "ORDER BY lower(u.name), u._key LIMIT " + str(int(limit)) + " OFFSET " + str(int(offset)), [pattern])
     end
 
-    rk = room_key
-    rows = @sdbql{
-      LET found = (
-        FOR m IN memberships FILTER m.room_id == #{rk}
-          FOR u IN users FILTER u._key == m.user_id AND u.status == "active"
-            FILTER #{q} == "" OR LIKE(u.name, CONCAT("%", #{q}, "%"), true)
-            SORT LOWER(u.name), u._key
-            RETURN u
-      )
-      RETURN SLICE(found, #{offset}, #{limit})
-    }
-    Db.first(rows) ?? []
+    Db.rows("SELECT " + Db.json("users", "u") + " AS j FROM memberships m JOIN users u ON u._key = m.user_id " +
+            "WHERE m.room_id = ? AND u.status = 'active' AND u.name LIKE ? ORDER BY lower(u.name), u._key " +
+            "LIMIT " + str(int(limit)) + " OFFSET " + str(int(offset)), [str(room_key), pattern])
   end
 
   static def set_role(key, role)
-    User.update(key, {"role": role, "updated_at": Clock.now})
+    Db.update_row("users", key, {"role": role, "updated_at": Clock.now})
   end
 
   # User::Bot#reset_bot_key
   static def reset_bot_key(key)
-    User.update(key, {"bot_token": User.generate_bot_token, "updated_at": Clock.now})
+    Db.update_row("users", key, {"bot_token": User.generate_bot_token, "updated_at": Clock.now})
   end
 
   # User#deactivate: close the sockets, drop memberships (direct rooms excepted), push
@@ -247,6 +227,6 @@ class User < Model
     Session.destroy_for_user(key)
     email = user["email_address"]
     email = email.replace("@", "-deactivated-" + uuid_v4() + "@") unless email.nil?
-    User.update(key, {"status": "deactivated", "email_address": email, "updated_at": Clock.now})
+    Db.update_row("users", key, {"status": "deactivated", "email_address": email, "updated_at": Clock.now})
   end
 end
