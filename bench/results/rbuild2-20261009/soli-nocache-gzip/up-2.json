@@ -1,0 +1,26 @@
+{
+  "avg_bytes": 5,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 9.119,
+    "mean_ms": 0.05,
+    "n": 1231117,
+    "p50_ms": 0.037,
+    "p90_ms": 0.075,
+    "p99_ms": 0.133
+  },
+  "ok": 1231117,
+  "path": "/up",
+  "rps": 307758.7,
+  "secs": 4.0,
+  "statuses": {
+    "200": 1231117
+  },
+  "cpu_us_per_request": {
+    "app": 7.5,
+    "app.sys": 2.5
+  }
+}

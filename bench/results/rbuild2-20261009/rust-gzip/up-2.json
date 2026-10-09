@@ -1,0 +1,26 @@
+{
+  "avg_bytes": 90,
+  "conc": 16,
+  "errors": 0,
+  "gzip": true,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 11.095,
+    "mean_ms": 0.1,
+    "n": 662591,
+    "p50_ms": 0.069,
+    "p90_ms": 0.183,
+    "p99_ms": 0.195
+  },
+  "ok": 662591,
+  "path": "/up",
+  "rps": 165637.6,
+  "secs": 4.0,
+  "statuses": {
+    "200": 662591
+  },
+  "cpu_us_per_request": {
+    "rust": 10.2,
+    "rust.sys": 2.5
+  }
+}

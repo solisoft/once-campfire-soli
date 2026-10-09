@@ -1,0 +1,26 @@
+{
+  "avg_bytes": 9749,
+  "conc": 16,
+  "errors": 0,
+  "gzip": false,
+  "invalid_responses": 0,
+  "latency": {
+    "max_ms": 3.961,
+    "mean_ms": 0.41,
+    "n": 155386,
+    "p50_ms": 0.407,
+    "p90_ms": 0.5,
+    "p99_ms": 0.587
+  },
+  "ok": 155386,
+  "path": "/users/me/sidebar",
+  "rps": 38842.2,
+  "secs": 4.0,
+  "statuses": {
+    "200": 155386
+  },
+  "cpu_us_per_request": {
+    "app": 95.2,
+    "app.sys": 22.3
+  }
+}
